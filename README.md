@@ -27,8 +27,9 @@ Changes from v0.5:
   - dark rack/studio direction with red, amber, cream and cyan accents
 
 
-## v0.6.1 GUI implementation
-- GUI now uses the approved mockup image as the real plugin background.
-- Added BinaryData asset embedding (`assets/sculpt_gui_bg.png`).
-- Dynamic controls are overlaid directly on the artwork: 4 macro knobs, output, VAR, IN/OUT meters, and RES/COMP/SAT meters.
-- Level Match remains removed.
+## v0.6.3 GUI precision pass
+- Control locations measured directly from the approved 1672x941 artwork instead of estimated.
+- Exact knob centres: LOW 272/464, MID 578/459, HIGH 879/457, PRESENCE 1179/457, OUTPUT 1458/459.
+- Meter LED coordinates measured from the source image pixels.
+- Baked control faces/LEDs are removed from the background with inpainting before live controls are rendered.
+- DSP unchanged from v0.6.

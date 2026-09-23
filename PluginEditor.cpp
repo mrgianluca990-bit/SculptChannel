@@ -1,211 +1,135 @@
 #include "PluginEditor.h"
 #include "BinaryData.h"
+#include <cmath>
 
-namespace
-{
-    constexpr float startAngle = juce::MathConstants<float>::pi * 1.20f;
-    constexpr float endAngle   = juce::MathConstants<float>::pi * 2.80f;
+namespace {
+constexpr float kStart = juce::MathConstants<float>::pi * 1.20f;
+constexpr float kEnd   = juce::MathConstants<float>::pi * 2.80f;
 }
 
-void SculptOverlayLookAndFeel::drawRotarySlider (juce::Graphics& g,
-                                                 int x, int y, int width, int height,
-                                                 float sliderPosProportional,
-                                                 float rotaryStartAngle,
-                                                 float rotaryEndAngle,
-                                                 juce::Slider&)
+void SculptPreciseLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
+                                                  float pos, float start, float end, juce::Slider&)
 {
-    auto area = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height);
-    auto c = area.getCentre();
-    const float radius = juce::jmin (area.getWidth(), area.getHeight()) * 0.44f;
+    auto a=juce::Rectangle<float>((float)x,(float)y,(float)width,(float)height).reduced(2.0f);
+    auto c=a.getCentre();
+    float r=juce::jmin(a.getWidth(),a.getHeight())*0.47f;
+    float angle=start+pos*(end-start);
 
-    const float angle = rotaryStartAngle + sliderPosProportional * (rotaryEndAngle - rotaryStartAngle);
+    auto shadow=juce::Rectangle<float>(2.0f*r,2.0f*r).withCentre(c.translated(0.0f,4.0f));
+    g.setColour(juce::Colour(0x88000000)); g.fillEllipse(shadow);
 
-    // subtle glow arc
+    auto outer=juce::Rectangle<float>(2.0f*r,2.0f*r).withCentre(c);
+    juce::ColourGradient rim(juce::Colour(0xffb58e61),outer.getX(),outer.getY(),juce::Colour(0xff3a2b1e),outer.getRight(),outer.getBottom(),false);
+    g.setGradientFill(rim); g.fillEllipse(outer);
+    g.setColour(juce::Colour(0xffd2aa78)); g.drawEllipse(outer.reduced(1.0f),1.0f);
+
+    auto blackRing=outer.reduced(r*0.10f);
+    g.setColour(juce::Colour(0xff090a0b)); g.fillEllipse(blackRing);
+
     juce::Path arc;
-    arc.addCentredArc (c.x, c.y, radius * 0.93f, radius * 0.93f, 0.0f, rotaryStartAngle, angle, true);
-    g.setColour (juce::Colour (0xccff8d17));
-    g.strokePath (arc, juce::PathStrokeType (2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    arc.addCentredArc(c.x,c.y,blackRing.getWidth()*0.49f,blackRing.getHeight()*0.49f,0.0f,start,angle,true);
+    g.setColour(juce::Colour(0x65ff5e16)); g.strokePath(arc,juce::PathStrokeType(6.0f));
+    g.setColour(juce::Colour(0xeaff9b28)); g.strokePath(arc,juce::PathStrokeType(2.0f));
 
-    // needle / pointer overlay over the baked knob
-    auto inner = juce::Point<float> (std::sin (angle), -std::cos (angle)) * (radius * 0.18f);
-    auto outer = juce::Point<float> (std::sin (angle), -std::cos (angle)) * (radius * 0.70f);
+    auto knob=blackRing.reduced(r*0.18f);
+    juce::ColourGradient body(juce::Colour(0xff3d3e40),knob.getCentreX(),knob.getY(),juce::Colour(0xff0b0c0d),knob.getCentreX(),knob.getBottom(),false);
+    g.setGradientFill(body); g.fillEllipse(knob);
+    g.setColour(juce::Colour(0xff606166)); g.drawEllipse(knob,1.0f);
 
-    g.setColour (juce::Colour (0xfff1e7d0));
-    g.drawLine ({ c + inner, c + outer }, 3.0f);
+    for(int i=14;i>=1;--i){
+        float rr=knob.getWidth()*0.32f*(float)i/14.0f;
+        auto ring=juce::Rectangle<float>(2*rr,2*rr).withCentre(c);
+        auto q=(juce::uint8)juce::jlimit(25,74,25+i*3);
+        g.setColour(juce::Colour(q,q,q)); g.drawEllipse(ring,0.55f);
+    }
 
-    g.setColour (juce::Colour (0x50ff8d17));
-    g.drawLine ({ c + inner, c + outer }, 6.5f);
+    auto p1=c+juce::Point<float>(std::sin(angle),-std::cos(angle))*(knob.getWidth()*0.11f);
+    auto p2=c+juce::Point<float>(std::sin(angle),-std::cos(angle))*(knob.getWidth()*0.41f);
+    g.setColour(juce::Colour(0xfff2e7d2)); g.drawLine({p1,p2},3.0f);
 }
 
-void SculptOverlayLookAndFeel::drawToggleButton (juce::Graphics& g,
-                                                 juce::ToggleButton& button,
-                                                 bool,
-                                                 bool)
+void SculptPreciseLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b, bool, bool)
 {
-    auto area = button.getLocalBounds().toFloat();
-    const bool on = button.getToggleState();
-
-    if (on)
-    {
-        g.setColour (juce::Colour (0x35ff5a47));
-        g.fillRoundedRectangle (area.reduced (2.0f), 6.0f);
-        g.setColour (juce::Colour (0x95fff4dd));
-        g.drawRoundedRectangle (area.reduced (4.0f), 5.0f, 1.2f);
-    }
-    else
-    {
-        g.setColour (juce::Colours::transparentBlack);
-        g.fillRect (area);
-    }
+    auto a=b.getLocalBounds().toFloat().reduced(3.0f);
+    bool on=b.getToggleState();
+    g.setColour(juce::Colour(0x77000000)); g.fillRoundedRectangle(a.translated(0,3),7.0f);
+    g.setColour(juce::Colour(0xff2b0907)); g.fillRoundedRectangle(a,7.0f);
+    g.setColour(juce::Colour(0xff9a704d)); g.drawRoundedRectangle(a,7.0f,1.0f);
+    auto in=a.reduced(9.0f,8.0f);
+    juce::ColourGradient face(on?juce::Colour(0xffff8064):juce::Colour(0xff70231b),in.getCentreX(),in.getY(),
+                              on?juce::Colour(0xffffd4a8):juce::Colour(0xffb53b2e),in.getCentreX(),in.getBottom(),false);
+    g.setGradientFill(face); g.fillRoundedRectangle(in,5.0f);
+    if(on){g.setColour(juce::Colour(0x55ff543f));g.fillRoundedRectangle(in.expanded(7.0f),9.0f);}
+    g.setColour(juce::Colour(0xfff5ead7));g.fillEllipse(juce::Rectangle<float>(8,8).withCentre(in.getCentre()));
 }
 
 SculptChannelAudioProcessorEditor::SculptChannelAudioProcessorEditor (SculptChannelAudioProcessor& p)
-    : AudioProcessorEditor (&p), processor (p)
+: AudioProcessorEditor(&p), processor(p)
 {
-    background = juce::ImageFileFormat::loadFrom (BinaryData::sculpt_gui_bg_png, BinaryData::sculpt_gui_bg_pngSize);
-    setLookAndFeel (&look);
-
-    setupKnob (low, "low");
-    setupKnob (mid, "mid");
-    setupKnob (high, "high");
-    setupKnob (presence, "presence");
-    setupKnob (output, "output", true);
-
-    variationButton.setClickingTogglesState (true);
-    variationButton.setColour (juce::ToggleButton::textColourId, juce::Colours::transparentBlack);
-    addAndMakeVisible (variationButton);
-    variationAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-        processor.getAPVTS(), "variation", variationButton);
-
-    setSize (1672 / 2, 941 / 2);
-    setResizable (true, true);
-    setResizeLimits (836, 470, 1672, 941);
-    startTimerHz (30);
+    background=juce::ImageFileFormat::loadFrom(BinaryData::sculpt_gui_bg_precise_png,BinaryData::sculpt_gui_bg_precise_pngSize);
+    setLookAndFeel(&look);
+    setupKnob(low,"low"); setupKnob(mid,"mid"); setupKnob(high,"high"); setupKnob(presence,"presence"); setupKnob(output,"output",true);
+    variationButton.setClickingTogglesState(true); variationButton.setColour(juce::ToggleButton::textColourId,juce::Colours::transparentBlack);
+    addAndMakeVisible(variationButton);
+    variationAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.getAPVTS(),"variation",variationButton);
+    setSize(836,471); setResizable(true,true); setResizeLimits(836,471,1672,941); startTimerHz(30);
 }
 
-SculptChannelAudioProcessorEditor::~SculptChannelAudioProcessorEditor()
+SculptChannelAudioProcessorEditor::~SculptChannelAudioProcessorEditor(){stopTimer();setLookAndFeel(nullptr);}
+
+void SculptChannelAudioProcessorEditor::setupKnob (KnobUI& k,const juce::String& id,bool outputKnob)
 {
-    stopTimer();
-    setLookAndFeel (nullptr);
+    k.slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag); k.slider.setRotaryParameters(kStart,kEnd,true);
+    k.slider.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0); addAndMakeVisible(k.slider);
+    k.attachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.getAPVTS(),id,k.slider);
+    k.slider.setMouseDragSensitivity(outputKnob?220:180);
 }
 
-void SculptChannelAudioProcessorEditor::setupKnob (KnobUI& k, const juce::String& param, bool isOutput)
+juce::Rectangle<int> SculptChannelAudioProcessorEditor::scaledRect (float x,float y,float w,float h) const
 {
-    k.slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    k.slider.setRotaryParameters (startAngle, endAngle, true);
-    k.slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-    k.slider.setColour (juce::Slider::rotarySliderFillColourId, juce::Colours::transparentBlack);
-    k.slider.setColour (juce::Slider::rotarySliderOutlineColourId, juce::Colours::transparentBlack);
-    k.slider.setColour (juce::Slider::thumbColourId, juce::Colours::transparentBlack);
-    addAndMakeVisible (k.slider);
-    k.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.getAPVTS(), param, k.slider);
-    k.slider.setMouseDragSensitivity (isOutput ? 220 : 180);
+    float sx=(float)getWidth()/1672.0f, sy=(float)getHeight()/941.0f;
+    return {(int)std::round(x*sx),(int)std::round(y*sy),(int)std::round(w*sx),(int)std::round(h*sy)};
 }
 
-juce::Rectangle<int> SculptChannelAudioProcessorEditor::knobBoundsForIndex (int index) const
+void SculptChannelAudioProcessorEditor::drawSegmentMeter (juce::Graphics& g,juce::Rectangle<float> a,float value,int segments)
 {
-    const float sx = (float) getWidth() / 1672.0f;
-    const float sy = (float) getHeight() / 941.0f;
-
-    static const int xs[] = { 170, 470, 768, 1064 };
-    const int y = 274;
-    const int w = 196;
-    const int h = 196;
-
-    return juce::Rectangle<int> ((int) std::round (xs[index] * sx),
-                                 (int) std::round (y * sy),
-                                 (int) std::round (w * sx),
-                                 (int) std::round (h * sy));
-}
-
-juce::Rectangle<int> SculptChannelAudioProcessorEditor::outputKnobBounds() const
-{
-    const float sx = (float) getWidth() / 1672.0f;
-    const float sy = (float) getHeight() / 941.0f;
-    return { (int) std::round (1333 * sx), (int) std::round (305 * sy),
-             (int) std::round (160 * sx), (int) std::round (160 * sy) };
-}
-
-juce::Rectangle<int> SculptChannelAudioProcessorEditor::varButtonBounds() const
-{
-    const float sx = (float) getWidth() / 1672.0f;
-    const float sy = (float) getHeight() / 941.0f;
-    return { (int) std::round (1372 * sx), (int) std::round (575 * sy),
-             (int) std::round (132 * sx), (int) std::round (92 * sy) };
-}
-
-void SculptChannelAudioProcessorEditor::drawSegmentMeter (juce::Graphics& g,
-                                                          juce::Rectangle<float> area,
-                                                          float value,
-                                                          int segments,
-                                                          juce::Colour low,
-                                                          juce::Colour high,
-                                                          float alpha)
-{
-    value = juce::jlimit (0.0f, 1.0f, value);
-    const float gap = area.getWidth() * 0.022f;
-    const float w = (area.getWidth() - gap * (segments - 1)) / (float) segments;
-    const int lit = (int) std::round (value * segments);
-
-    for (int i = 0; i < segments; ++i)
-    {
-        auto seg = juce::Rectangle<float> (area.getX() + i * (w + gap), area.getY(), w, area.getHeight());
-        if (i < lit)
-        {
-            auto c = low.interpolatedWith (high, (float) i / (float) juce::jmax (1, segments - 1)).withAlpha (alpha);
-            g.setColour (c);
-            g.fillRoundedRectangle (seg, 1.0f);
-
-            g.setColour (c.withAlpha (0.25f));
-            g.fillRoundedRectangle (seg.expanded (1.2f, 1.2f), 1.8f);
-        }
+    value=juce::jlimit(0.0f,1.0f,value); float gap=a.getWidth()*0.025f;
+    float w=(a.getWidth()-gap*(segments-1))/(float)segments; int lit=(int)std::round(value*segments);
+    for(int i=0;i<segments;++i){
+        auto s=juce::Rectangle<float>(a.getX()+i*(w+gap),a.getY(),w,a.getHeight());
+        g.setColour(juce::Colour(0xff221713));g.fillRoundedRectangle(s,1.0f);
+        if(i<lit){float t=(float)i/(float)juce::jmax(1,segments-1);auto c=juce::Colour(0xfffff0c8).interpolatedWith(juce::Colour(0xffff2f29),t);
+            g.setColour(c);g.fillRoundedRectangle(s.reduced(0.4f),1.0f);g.setColour(c.withAlpha(0.25f));g.fillRoundedRectangle(s.expanded(1.0f),1.5f);}
     }
 }
 
 void SculptChannelAudioProcessorEditor::drawAllMeters (juce::Graphics& g)
 {
-    const float sx = (float) getWidth() / 1672.0f;
-    const float sy = (float) getHeight() / 941.0f;
-
-    // Top IN/OUT meters
-    drawSegmentMeter (g, { 1154.0f * sx, 122.0f * sy, 262.0f * sx, 22.0f * sy }, processor.getInputMeter(), 18,
-                      juce::Colour (0xfffff0c9), juce::Colour (0xffff2c28), 0.90f);
-    drawSegmentMeter (g, { 1154.0f * sx, 200.0f * sy, 262.0f * sx, 22.0f * sy }, processor.getOutputMeter(), 18,
-                      juce::Colour (0xfffff0c9), juce::Colour (0xffff2c28), 0.90f);
-
-    const int meterXs[] = { 223, 521, 818, 1115 };
-    const int ys[] = { 585, 647, 710 };
-
-    for (int b = 0; b < 4; ++b)
-    {
-        drawSegmentMeter (g, { meterXs[b] * sx, ys[0] * sy, 164.0f * sx, 19.0f * sy }, processor.getResMeter (b), 11,
-                          juce::Colour (0xffffefc2), juce::Colour (0xffff2c28));
-        drawSegmentMeter (g, { meterXs[b] * sx, ys[1] * sy, 164.0f * sx, 19.0f * sy }, processor.getCompMeter (b), 11,
-                          juce::Colour (0xffffefc2), juce::Colour (0xffff2c28));
-        drawSegmentMeter (g, { meterXs[b] * sx, ys[2] * sy, 164.0f * sx, 19.0f * sy }, processor.getSatMeter (b), 11,
-                          juce::Colour (0xffffefc2), juce::Colour (0xffff2c28));
+    float sx=(float)getWidth()/1672.0f, sy=(float)getHeight()/941.0f;
+    drawSegmentMeter(g,{1172*sx,131*sy,262*sx,18*sy},processor.getInputMeter(),19);
+    drawSegmentMeter(g,{1172*sx,207*sy,262*sx,18*sy},processor.getOutputMeter(),19);
+    const int xs[4]={214,525,828,1131}; const int ys[3]={602,650,701};
+    for(int b=0;b<4;++b){
+        drawSegmentMeter(g,{xs[b]*sx,ys[0]*sy,156*sx,17*sy},processor.getResMeter(b),12);
+        drawSegmentMeter(g,{xs[b]*sx,ys[1]*sy,156*sx,18*sy},processor.getCompMeter(b),12);
+        drawSegmentMeter(g,{xs[b]*sx,ys[2]*sy,156*sx,18*sy},processor.getSatMeter(b),12);
     }
 }
 
 void SculptChannelAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colours::black);
-    if (background.isValid())
-        g.drawImage (background, getLocalBounds().toFloat());
-    drawAllMeters (g);
+    g.fillAll(juce::Colours::black); if(background.isValid())g.drawImage(background,getLocalBounds().toFloat()); drawAllMeters(g);
 }
 
 void SculptChannelAudioProcessorEditor::resized()
 {
-    low.slider.setBounds (knobBoundsForIndex (0));
-    mid.slider.setBounds (knobBoundsForIndex (1));
-    high.slider.setBounds (knobBoundsForIndex (2));
-    presence.slider.setBounds (knobBoundsForIndex (3));
-    output.slider.setBounds (outputKnobBounds());
-    variationButton.setBounds (varButtonBounds());
+    // Exact measured centres: 272/464, 578/459, 879/457, 1179/457, 1458/459.
+    low.slider.setBounds(scaledRect(197,389,150,150));
+    mid.slider.setBounds(scaledRect(503,384,150,150));
+    high.slider.setBounds(scaledRect(809,387,140,140));
+    presence.slider.setBounds(scaledRect(1109,387,140,140));
+    output.slider.setBounds(scaledRect(1403,404,110,110));
+    variationButton.setBounds(scaledRect(1417,573,84,65));
 }
 
-void SculptChannelAudioProcessorEditor::timerCallback()
-{
-    repaint();
-}
+void SculptChannelAudioProcessorEditor::timerCallback(){repaint();}
