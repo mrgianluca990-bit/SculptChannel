@@ -1,0 +1,56 @@
+name: Build Sculpt Channel macOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Xcode \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 3
+
+      - name: Ad-hoc sign
+        run: |
+          codesign --force --deep --sign - \
+            "build/SculptChannel_artefacts/Release/VST3/Sculpt Channel.vst3"
+
+          codesign --force --deep --sign - \
+            "build/SculptChannel_artefacts/Release/AU/Sculpt Channel.component"
+
+      - name: Package
+        run: |
+          mkdir -p dist
+
+          ditto -c -k --sequesterRsrc --keepParent \
+            "build/SculptChannel_artefacts/Release/VST3/Sculpt Channel.vst3" \
+            "dist/SculptChannel-VST3-macOS-universal.zip"
+
+          ditto -c -k --sequesterRsrc --keepParent \
+            "build/SculptChannel_artefacts/Release/AU/Sculpt Channel.component" \
+            "dist/SculptChannel-AU-macOS-universal.zip"
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: SculptChannel-VST3-macOS-universal
+          path: dist/SculptChannel-VST3-macOS-universal.zip
+
+      - name: Upload AU
+        uses: actions/upload-artifact@v4
+        with:
+          name: SculptChannel-AU-macOS-universal
+          path: dist/SculptChannel-AU-macOS-universal.zip
