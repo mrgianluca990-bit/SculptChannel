@@ -4,6 +4,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <array>
 #include <atomic>
+#include <memory>
 
 class SculptChannelAudioProcessor final : public juce::AudioProcessor
 {
@@ -31,8 +32,8 @@ public:
     const juce::String getProgramName (int) override { return {}; }
     void changeProgramName (int, const juce::String&) override {}
 
-    void getStateInformation (juce::MemoryBlock& destData) override;
-    void setStateInformation (const void* data, int sizeInBytes) override;
+    void getStateInformation (juce::MemoryBlock&) override;
+    void setStateInformation (const void*, int) override;
 
     juce::AudioProcessorValueTreeState& getAPVTS() { return apvts; }
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
@@ -40,72 +41,93 @@ public:
     float getResMeter (int band) const noexcept;
     float getCompMeter (int band) const noexcept;
     float getSatMeter (int band) const noexcept;
+    float getResBandMeter (int band) const noexcept;
     float getInputMeter() const noexcept  { return inputMeter.load(); }
     float getOutputMeter() const noexcept { return outputMeter.load(); }
 
-private:
-    static constexpr int numBands = 4;
-    static constexpr int numVariationBands = 6;
+    static constexpr int getNumResBands() noexcept { return 32; }
 
-    struct BandState
+private:
+    static constexpr int numMacroBands = 4;
+    static constexpr int numResBands = 32;
+
+    struct MacroBandState
     {
         juce::dsp::StateVariableTPTFilter<float> filter;
-        juce::dsp::Compressor<float> compressor;
         juce::AudioBuffer<float> work;
-        float fastEnv = 0.0f;
-        float slowEnv = 0.0f;
+
+        float compressorEnvelope = 0.0f;
+        float compressorGain = 1.0f;
     };
 
-    struct VariationBandState
+    struct ResBandState
     {
         juce::dsp::StateVariableTPTFilter<float> filter;
         juce::AudioBuffer<float> work;
-        float fastEnv = 0.0f;
-        float slowEnv = 0.0f;
+
+        float slowEnergy = 0.0f;
+        float currentReduction = 0.0f;
     };
 
     juce::AudioProcessorValueTreeState apvts;
 
-    std::array<BandState, numBands> bands;
-    std::array<VariationBandState, numVariationBands> variationBands;
+    std::array<MacroBandState, numMacroBands> macroBands;
+    std::array<ResBandState, numResBands> resBands;
 
-    juce::AudioBuffer<float> dryBuffer;
+    std::array<std::array<float, numMacroBands>, numResBands> resMacroWeights {};
+    std::array<float, numResBands> variationSensitivity {};
+
+    std::unique_ptr<juce::dsp::Oversampling<float>> oversampler;
+
     juce::SmoothedValue<float> outputGain;
+    juce::AudioBuffer<float> dryBaseRate;
 
-    double currentSampleRate = 44100.0;
+    double baseSampleRate = 44100.0;
+    double internalSampleRate = 176400.0;
+    int maxInternalBlockSize = 2048;
 
-    std::array<std::atomic<float>, numBands> resMeters;
-    std::array<std::atomic<float>, numBands> compMeters;
-    std::array<std::atomic<float>, numBands> satMeters;
+    float levelMatchDbState = 0.0f;
+
+    std::array<std::atomic<float>, numMacroBands> resMeters;
+    std::array<std::atomic<float>, numMacroBands> compMeters;
+    std::array<std::atomic<float>, numMacroBands> satMeters;
+    std::array<std::atomic<float>, numResBands> resBandMeters;
 
     std::atomic<float> inputMeter  { 0.0f };
     std::atomic<float> outputMeter { 0.0f };
 
-    void configureBandFilters();
-    void configureVariationFilters();
+    static constexpr std::array<float, numResBands> resFrequencies
+    {
+        20.0f, 25.0f, 31.5f, 40.0f, 50.0f, 63.0f, 80.0f, 100.0f,
+        125.0f, 160.0f, 200.0f, 250.0f, 315.0f, 400.0f, 500.0f, 630.0f,
+        800.0f, 1000.0f, 1250.0f, 1600.0f, 2000.0f, 2500.0f, 3000.0f, 3500.0f,
+        4000.0f, 5000.0f, 6300.0f, 8000.0f, 10000.0f, 12500.0f, 16000.0f, 20000.0f
+    };
 
-    float processResonanceControl (BandState& state,
-                                   float sample,
-                                   float amount,
-                                   int bandIndex) noexcept;
+    void configureMacroFilters();
+    void configureResFilters();
+    void computeResWeighting();
 
-    float processSaturation (float sample,
-                             float positiveAmount,
-                             float negativeAmount,
-                             int bandIndex) const noexcept;
+    void processInternal (juce::AudioBuffer<float>&);
+    void processResEngine (juce::AudioBuffer<float>&,
+                           const std::array<float, numMacroBands>& macros,
+                           bool variationEnabled);
 
-    void processBand (juce::AudioBuffer<float>& source,
-                      int bandIndex,
-                      float macroValue,
-                      bool broadResonanceEnabled);
+    void processMacroBand (juce::AudioBuffer<float>&,
+                           int bandIndex,
+                           float macroValue);
 
-    void processVariationSoothe (juce::AudioBuffer<float>& source,
-                                 const std::array<float, numBands>& macroValues);
+    float applyBandSaturation (float sample,
+                               float positiveAmount,
+                               float negativeAmount,
+                               int bandIndex) const noexcept;
 
-    float getVariationAmount (int variationBand,
-                              const std::array<float, numBands>& macroValues) const noexcept;
+    float getBlockRMS (const juce::AudioBuffer<float>&) const noexcept;
+    float macroActivityCurve (float magnitude) const noexcept;
 
-    int variationBandToMacroMeter (int variationBand) const noexcept;
+    void applyLevelMatchAndOutput (juce::AudioBuffer<float>&,
+                                   float inputRms,
+                                   bool levelMatchEnabled);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SculptChannelAudioProcessor)
 };

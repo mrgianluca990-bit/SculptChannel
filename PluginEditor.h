@@ -4,10 +4,10 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
 
-class SculptLookAndFeel final : public juce::LookAndFeel_V4
+class SculptVintageLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
-    SculptLookAndFeel();
+    SculptVintageLookAndFeel();
 
     void drawRotarySlider (juce::Graphics&,
                            int x, int y, int width, int height,
@@ -15,6 +15,11 @@ public:
                            float rotaryStartAngle,
                            float rotaryEndAngle,
                            juce::Slider&) override;
+
+    void drawToggleButton (juce::Graphics&,
+                           juce::ToggleButton&,
+                           bool shouldDrawButtonAsHighlighted,
+                           bool shouldDrawButtonAsDown) override;
 };
 
 class SculptChannelAudioProcessorEditor final
@@ -31,7 +36,7 @@ public:
 
 private:
     SculptChannelAudioProcessor& processor;
-    SculptLookAndFeel look;
+    SculptVintageLookAndFeel look;
 
     struct BandUI
     {
@@ -50,11 +55,16 @@ private:
         &low, &mid, &high, &presence
     };
 
-    juce::TextButton variationButton { "VARIATION" };
+    juce::ToggleButton variationButton { "VARIATION" };
+    juce::ToggleButton levelMatchButton { "LEVEL MATCH" };
 
     std::unique_ptr<
         juce::AudioProcessorValueTreeState::ButtonAttachment>
         variationAttachment;
+
+    std::unique_ptr<
+        juce::AudioProcessorValueTreeState::ButtonAttachment>
+        levelMatchAttachment;
 
     juce::Slider output;
     juce::Label outputLabel;
@@ -68,18 +78,23 @@ private:
                     const juce::String& freq,
                     const juce::String& parameterID);
 
+    void drawFaceplateTexture (juce::Graphics&, juce::Rectangle<float>);
+    void drawWoodCheek (juce::Graphics&, juce::Rectangle<float>, bool left);
+    void drawModuleFrame (juce::Graphics&, juce::Rectangle<float>);
+    void drawKnobScale (juce::Graphics&, juce::Rectangle<float>);
+
     void drawMeterStack (juce::Graphics&,
                          juce::Rectangle<float>,
                          int bandIndex);
 
-    void drawScale (juce::Graphics&,
-                    juce::Rectangle<float>);
+    void drawBarMeter (juce::Graphics&,
+                       juce::Rectangle<float>,
+                       float value,
+                       juce::Colour colour,
+                       const juce::String& label);
 
-    void drawLevelMeter (juce::Graphics&,
-                         juce::Rectangle<float>,
-                         float value,
-                         juce::Colour colour,
-                         const juce::String& label);
+    void drawResMatrix (juce::Graphics&,
+                        juce::Rectangle<float>);
 
     void timerCallback() override;
 

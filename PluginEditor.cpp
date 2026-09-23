@@ -1,21 +1,22 @@
 #include "PluginEditor.h"
+#include <cmath>
 
-SculptLookAndFeel::SculptLookAndFeel()
+SculptVintageLookAndFeel::SculptVintageLookAndFeel()
 {
     setColour (
         juce::Slider::textBoxTextColourId,
-        juce::Colour (0xffefe7d7));
+        juce::Colour (0xffeadfc6));
 
     setColour (
         juce::Slider::textBoxBackgroundColourId,
-        juce::Colour (0xff171b20));
+        juce::Colour (0xff111315));
 
     setColour (
         juce::Slider::textBoxOutlineColourId,
-        juce::Colours::transparentBlack);
+        juce::Colour (0xff5d574c));
 }
 
-void SculptLookAndFeel::drawRotarySlider (
+void SculptVintageLookAndFeel::drawRotarySlider (
     juce::Graphics& g,
     int x, int y, int width, int height,
     float sliderPosProportional,
@@ -23,23 +24,24 @@ void SculptLookAndFeel::drawRotarySlider (
     float rotaryEndAngle,
     juce::Slider&)
 {
-    auto bounds =
+    auto area =
         juce::Rectangle<float> (
             static_cast<float> (x),
             static_cast<float> (y),
             static_cast<float> (width),
             static_cast<float> (height))
-        .reduced (12.0f);
+        .reduced (13.0f);
 
-    const float size =
+    const float diameter =
         juce::jmin (
-            bounds.getWidth(),
-            bounds.getHeight());
+            area.getWidth(),
+            area.getHeight());
 
     auto dial =
         juce::Rectangle<float> (
-            0, 0, size, size)
-        .withCentre (bounds.getCentre());
+            0.0f, 0.0f,
+            diameter, diameter)
+        .withCentre (area.getCentre());
 
     const auto centre =
         dial.getCentre();
@@ -49,60 +51,209 @@ void SculptLookAndFeel::drawRotarySlider (
         + sliderPosProportional
           * (rotaryEndAngle - rotaryStartAngle);
 
-    g.setColour (juce::Colour (0x70000000));
+    // shadow
+    g.setColour (
+        juce::Colour (0x85000000));
+
     g.fillEllipse (
         dial.translated (0.0f, 7.0f)
-            .expanded (3.0f));
+            .expanded (5.0f));
 
-    g.setColour (juce::Colour (0xff7d7b72));
-    g.fillEllipse (dial);
-
-    g.setColour (juce::Colour (0xffb1ac9d));
-    g.drawEllipse (
-        dial.reduced (1.5f), 1.2f);
-
-    auto knob = dial.reduced (9.0f);
-
-    juce::ColourGradient knobGrad (
-        juce::Colour (0xff363c42),
-        knob.getCentreX(),
-        knob.getY(),
-        juce::Colour (0xff15181c),
-        knob.getCentreX(),
-        knob.getBottom(),
+    // brass collar
+    juce::ColourGradient brass (
+        juce::Colour (0xff9a825d),
+        dial.getX(), dial.getY(),
+        juce::Colour (0xff493e30),
+        dial.getRight(), dial.getBottom(),
         false);
 
-    g.setGradientFill (knobGrad);
+    g.setGradientFill (brass);
+    g.fillEllipse (dial);
+
+    g.setColour (
+        juce::Colour (0xffc1a979));
+
+    g.drawEllipse (
+        dial.reduced (1.0f), 1.3f);
+
+    auto knob =
+        dial.reduced (10.0f);
+
+    juce::ColourGradient bakelite (
+        juce::Colour (0xff30302d),
+        knob.getCentreX(), knob.getY(),
+        juce::Colour (0xff090a0a),
+        knob.getCentreX(), knob.getBottom(),
+        false);
+
+    g.setGradientFill (bakelite);
     g.fillEllipse (knob);
 
-    g.setColour (juce::Colour (0xff596068));
-    g.drawEllipse (knob, 1.0f);
+    // bakelite radial ribs
+    g.setColour (
+        juce::Colour (0x443f403d));
 
-    g.setColour (juce::Colour (0x22ffffff));
+    for (int i = 0; i < 28; ++i)
+    {
+        const float a =
+            juce::MathConstants<float>::twoPi
+            * static_cast<float> (i) / 28.0f;
+
+        const float r1 =
+            knob.getWidth() * 0.42f;
+
+        const float r2 =
+            knob.getWidth() * 0.49f;
+
+        g.drawLine (
+            centre.x + std::sin (a) * r1,
+            centre.y - std::cos (a) * r1,
+            centre.x + std::sin (a) * r2,
+            centre.y - std::cos (a) * r2,
+            1.0f);
+    }
+
+    g.setColour (
+        juce::Colour (0xff070808));
+
     g.drawEllipse (
-        knob.reduced (4.0f), 1.0f);
+        knob, 1.5f);
 
-    juce::Path pointer;
+    // ivory pointer
+    const float pointerLength =
+        knob.getRadius() * 0.72f;
 
-    pointer.addRoundedRectangle (
-        -2.0f,
-        -knob.getHeight() * 0.42f,
-        4.0f,
-        knob.getHeight() * 0.28f,
-        2.0f);
+    const auto end =
+        centre
+        + juce::Point<float> (
+            std::sin (angle),
+            -std::cos (angle))
+          * pointerLength;
 
-    g.setColour (juce::Colour (0xffead8b4));
+    g.setColour (
+        juce::Colour (0xffeadfc6));
 
-    g.fillPath (
-        pointer,
-        juce::AffineTransform::rotation (angle)
-            .translated (centre.x, centre.y));
+    g.drawLine (
+        centre.x,
+        centre.y,
+        end.x,
+        end.y,
+        3.0f);
 
-    g.setColour (juce::Colour (0xff67c7db));
+    g.setColour (
+        juce::Colour (0xff67c7d7));
 
     g.fillEllipse (
-        juce::Rectangle<float> (5, 5)
-            .withCentre (centre));
+        juce::Rectangle<float> (
+            5.5f, 5.5f)
+        .withCentre (centre));
+}
+
+void SculptVintageLookAndFeel::drawToggleButton (
+    juce::Graphics& g,
+    juce::ToggleButton& button,
+    bool,
+    bool)
+{
+    auto bounds =
+        button.getLocalBounds()
+        .toFloat()
+        .reduced (2.0f);
+
+    const bool on =
+        button.getToggleState();
+
+    auto plate =
+        bounds.removeFromLeft (
+            juce::jmin (
+                56.0f,
+                bounds.getWidth() * 0.42f));
+
+    g.setColour (
+        juce::Colour (0xff0b0d0e));
+
+    g.fillRoundedRectangle (
+        plate, 5.0f);
+
+    g.setColour (
+        juce::Colour (0xff6f6555));
+
+    g.drawRoundedRectangle (
+        plate, 5.0f, 1.0f);
+
+    const auto pivot =
+        plate.getCentre();
+
+    // metal toggle slot
+    g.setColour (
+        juce::Colour (0xff282724));
+
+    g.fillRoundedRectangle (
+        juce::Rectangle<float> (
+            7.0f, 26.0f)
+        .withCentre (pivot),
+        3.0f);
+
+    const float leverY =
+        on
+            ? pivot.y - 7.0f
+            : pivot.y + 7.0f;
+
+    g.setColour (
+        juce::Colour (0xffa69b87));
+
+    g.drawLine (
+        pivot.x,
+        pivot.y,
+        pivot.x,
+        leverY,
+        4.0f);
+
+    g.setColour (
+        juce::Colour (0xffd2c3a4));
+
+    g.fillEllipse (
+        juce::Rectangle<float> (
+            9.0f, 9.0f)
+        .withCentre (
+            { pivot.x, leverY }));
+
+    // pilot lamp
+    auto lamp =
+        juce::Rectangle<float> (
+            8.0f, 8.0f)
+        .withCentre (
+            { plate.getRight() - 10.0f,
+              plate.getY() + 10.0f });
+
+    g.setColour (
+        on
+            ? juce::Colour (0xffe1a756)
+            : juce::Colour (0xff322a20));
+
+    g.fillEllipse (lamp);
+
+    if (on)
+    {
+        g.setColour (
+            juce::Colour (0x55e7b266));
+
+        g.fillEllipse (
+            lamp.expanded (4.0f));
+    }
+
+    g.setColour (
+        juce::Colour (0xffd9ceb7));
+
+    g.setFont (
+        juce::Font (
+            10.0f,
+            juce::Font::bold));
+
+    g.drawText (
+        button.getButtonText(),
+        bounds.toNearestInt(),
+        juce::Justification::centredLeft);
 }
 
 SculptChannelAudioProcessorEditor::
@@ -138,24 +289,10 @@ SculptChannelAudioProcessorEditor (
         "presence");
 
     variationButton.setClickingTogglesState (true);
-
-    variationButton.setColour (
-        juce::TextButton::buttonColourId,
-        juce::Colour (0xff1c2329));
-
-    variationButton.setColour (
-        juce::TextButton::buttonOnColourId,
-        juce::Colour (0xffb88748));
-
-    variationButton.setColour (
-        juce::TextButton::textColourOffId,
-        juce::Colour (0xff98a4ae));
-
-    variationButton.setColour (
-        juce::TextButton::textColourOnId,
-        juce::Colour (0xff101418));
+    levelMatchButton.setClickingTogglesState (true);
 
     addAndMakeVisible (variationButton);
+    addAndMakeVisible (levelMatchButton);
 
     variationAttachment =
         std::make_unique<
@@ -164,8 +301,20 @@ SculptChannelAudioProcessorEditor (
                 "variation",
                 variationButton);
 
+    levelMatchAttachment =
+        std::make_unique<
+            juce::AudioProcessorValueTreeState::ButtonAttachment> (
+                processor.getAPVTS(),
+                "levelmatch",
+                levelMatchButton);
+
     output.setSliderStyle (
         juce::Slider::RotaryHorizontalVerticalDrag);
+
+    output.setRotaryParameters (
+        juce::MathConstants<float>::pi * 1.20f,
+        juce::MathConstants<float>::pi * 2.80f,
+        true);
 
     output.setTextBoxStyle (
         juce::Slider::TextBoxBelow,
@@ -184,11 +333,12 @@ SculptChannelAudioProcessorEditor (
 
     outputLabel.setColour (
         juce::Label::textColourId,
-        juce::Colour (0xffd4c4a3));
+        juce::Colour (0xffdfd2b8));
 
     outputLabel.setFont (
-        juce::Font (11.0f,
-                    juce::Font::bold));
+        juce::Font (
+            11.0f,
+            juce::Font::bold));
 
     addAndMakeVisible (outputLabel);
 
@@ -202,10 +352,11 @@ SculptChannelAudioProcessorEditor (
     setResizable (true, true);
 
     setResizeLimits (
-        940, 580,
-        1500, 920);
+        1040, 650,
+        1600, 980);
 
-    setSize (1200, 740);
+    setSize (
+        1260, 760);
 
     startTimerHz (30);
 }
@@ -235,7 +386,7 @@ void SculptChannelAudioProcessorEditor::setupBand (
         juce::Slider::TextBoxBelow,
         false,
         88,
-        25);
+        24);
 
     addAndMakeVisible (band.knob);
 
@@ -248,7 +399,7 @@ void SculptChannelAudioProcessorEditor::setupBand (
 
     band.title.setColour (
         juce::Label::textColourId,
-        juce::Colour (0xfff0e7d2));
+        juce::Colour (0xffeadfc6));
 
     band.title.setFont (
         juce::Font (
@@ -266,7 +417,7 @@ void SculptChannelAudioProcessorEditor::setupBand (
 
     band.freq.setColour (
         juce::Label::textColourId,
-        juce::Colour (0xff8fa0ad));
+        juce::Colour (0xff9b927f));
 
     band.freq.setFont (
         juce::Font (10.0f));
@@ -281,48 +432,228 @@ void SculptChannelAudioProcessorEditor::setupBand (
                 band.knob);
 }
 
-void SculptChannelAudioProcessorEditor::drawScale (
+void SculptChannelAudioProcessorEditor::drawFaceplateTexture (
+    juce::Graphics& g,
+    juce::Rectangle<float> area)
+{
+    juce::ColourGradient plate (
+        juce::Colour (0xff282927),
+        area.getCentreX(),
+        area.getY(),
+        juce::Colour (0xff101211),
+        area.getCentreX(),
+        area.getBottom(),
+        false);
+
+    g.setGradientFill (plate);
+    g.fillRoundedRectangle (
+        area, 12.0f);
+
+    // horizontal brushed enamel
+    for (int y = static_cast<int> (area.getY());
+         y < static_cast<int> (area.getBottom());
+         y += 4)
+    {
+        const int seed =
+            (y * 37) % 19;
+
+        g.setColour (
+            seed < 8
+                ? juce::Colour (0x0cffffff)
+                : juce::Colour (0x09000000));
+
+        g.drawLine (
+            area.getX() + 4.0f,
+            static_cast<float> (y),
+            area.getRight() - 4.0f,
+            static_cast<float> (y),
+            1.0f);
+    }
+
+    g.setColour (
+        juce::Colour (0xff655d50));
+
+    g.drawRoundedRectangle (
+        area, 12.0f, 1.4f);
+}
+
+void SculptChannelAudioProcessorEditor::drawWoodCheek (
+    juce::Graphics& g,
+    juce::Rectangle<float> area,
+    bool left)
+{
+    juce::ColourGradient wood (
+        juce::Colour (0xff5b3c29),
+        area.getX(),
+        area.getCentreY(),
+        juce::Colour (0xff2b1c14),
+        area.getRight(),
+        area.getCentreY(),
+        false);
+
+    g.setGradientFill (wood);
+    g.fillRoundedRectangle (
+        area, 11.0f);
+
+    g.setColour (
+        juce::Colour (0x55301b10));
+
+    for (int i = 0; i < 13; ++i)
+    {
+        const float x =
+            area.getX()
+            + 6.0f
+            + i * area.getWidth() / 13.0f;
+
+        g.drawLine (
+            x,
+            area.getY() + 8.0f,
+            x + (left ? -4.0f : 4.0f),
+            area.getBottom() - 8.0f,
+            1.0f);
+    }
+
+    g.setColour (
+        juce::Colour (0xff8a6546));
+
+    g.drawRoundedRectangle (
+        area, 11.0f, 1.0f);
+}
+
+void SculptChannelAudioProcessorEditor::drawModuleFrame (
     juce::Graphics& g,
     juce::Rectangle<float> area)
 {
     g.setColour (
-        juce::Colour (0xff76828d));
+        juce::Colour (0xff0c0e0e));
+
+    g.fillRoundedRectangle (
+        area, 7.0f);
+
+    g.setColour (
+        juce::Colour (0xff3e3d38));
+
+    g.drawRoundedRectangle (
+        area, 7.0f, 1.0f);
+
+    auto inner =
+        area.reduced (5.0f);
+
+    g.setColour (
+        juce::Colour (0xff1c1e1d));
+
+    g.fillRoundedRectangle (
+        inner, 5.0f);
+
+    // vintage screws
+    for (auto point : {
+            juce::Point<float> { inner.getX() + 7.0f, inner.getY() + 7.0f },
+            juce::Point<float> { inner.getRight() - 7.0f, inner.getY() + 7.0f },
+            juce::Point<float> { inner.getX() + 7.0f, inner.getBottom() - 7.0f },
+            juce::Point<float> { inner.getRight() - 7.0f, inner.getBottom() - 7.0f } })
+    {
+        g.setColour (
+            juce::Colour (0xff83745e));
+
+        g.fillEllipse (
+            juce::Rectangle<float> (
+                6.0f, 6.0f)
+            .withCentre (point));
+
+        g.setColour (
+            juce::Colour (0xff382f25));
+
+        g.drawLine (
+            point.x - 2.0f,
+            point.y,
+            point.x + 2.0f,
+            point.y,
+            1.0f);
+    }
+}
+
+void SculptChannelAudioProcessorEditor::drawKnobScale (
+    juce::Graphics& g,
+    juce::Rectangle<float> area)
+{
+    const auto centre =
+        area.getCentre();
+
+    const float radius =
+        juce::jmin (
+            area.getWidth(),
+            area.getHeight())
+        * 0.43f;
+
+    const float start =
+        juce::MathConstants<float>::pi * 1.20f;
+
+    const float end =
+        juce::MathConstants<float>::pi * 2.80f;
+
+    for (int i = 0; i <= 20; ++i)
+    {
+        const float t =
+            static_cast<float> (i) / 20.0f;
+
+        const float angle =
+            start + (end - start) * t;
+
+        const bool major =
+            (i % 5) == 0;
+
+        const float r1 =
+            radius
+            + (major ? 5.0f : 7.0f);
+
+        const float r2 =
+            radius
+            + (major ? 13.0f : 11.0f);
+
+        g.setColour (
+            major
+                ? juce::Colour (0xffb6a789)
+                : juce::Colour (0xff675f52));
+
+        g.drawLine (
+            centre.x + std::sin (angle) * r1,
+            centre.y - std::cos (angle) * r1,
+            centre.x + std::sin (angle) * r2,
+            centre.y - std::cos (angle) * r2,
+            major ? 1.5f : 1.0f);
+    }
 
     g.setFont (
         juce::Font (
-            9.0f,
+            8.5f,
             juce::Font::bold));
+
+    g.setColour (
+        juce::Colour (0xff968c78));
 
     g.drawText (
         "RECESS",
-        area.removeFromLeft (70.0f)
-            .toNearestInt(),
+        static_cast<int> (area.getX()),
+        static_cast<int> (area.getBottom() - 20.0f),
+        58, 15,
         juce::Justification::centredLeft);
 
     g.drawText (
         "0",
-        juce::Rectangle<int> (
-            static_cast<int> (
-                area.getCentreX()) - 8,
-            static_cast<int> (area.getY()),
-            16,
-            static_cast<int> (
-                area.getHeight())),
+        static_cast<int> (centre.x - 8.0f),
+        static_cast<int> (area.getY() + 1.0f),
+        16, 15,
         juce::Justification::centred);
 
     g.drawText (
         "FORWARD",
-        juce::Rectangle<int> (
-            static_cast<int> (
-                area.getRight() - 80.0f),
-            static_cast<int> (area.getY()),
-            80,
-            static_cast<int> (
-                area.getHeight())),
+        static_cast<int> (area.getRight() - 62.0f),
+        static_cast<int> (area.getBottom() - 20.0f),
+        62, 15,
         juce::Justification::centredRight);
 }
 
-void SculptChannelAudioProcessorEditor::drawLevelMeter (
+void SculptChannelAudioProcessorEditor::drawBarMeter (
     juce::Graphics& g,
     juce::Rectangle<float> area,
     float value,
@@ -334,52 +665,64 @@ void SculptChannelAudioProcessorEditor::drawLevelMeter (
             0.0f, 1.0f, value);
 
     g.setColour (
-        juce::Colour (0xff11161b));
+        juce::Colour (0xff090b0b));
 
     g.fillRoundedRectangle (
         area, 3.0f);
 
     g.setColour (
-        juce::Colour (0xff2f3941));
+        juce::Colour (0xff534e44));
 
     g.drawRoundedRectangle (
         area, 3.0f, 1.0f);
 
-    auto fill =
+    auto inner =
         area.reduced (3.0f);
 
-    fill.setWidth (
-        fill.getWidth() * value);
+    const int segments = 12;
+    const float gap = 2.0f;
+    const float segmentWidth =
+        (inner.getWidth()
+         - gap * (segments - 1))
+        / static_cast<float> (segments);
 
-    juce::ColourGradient grad (
-        colour.brighter (0.12f),
-        fill.getX(),
-        fill.getCentreY(),
-        colour.darker (0.15f),
-        fill.getRight(),
-        fill.getCentreY(),
-        false);
+    const int lit =
+        static_cast<int> (
+            std::round (value * segments));
 
-    g.setGradientFill (grad);
+    for (int i = 0; i < segments; ++i)
+    {
+        auto seg =
+            juce::Rectangle<float> (
+                inner.getX()
+                    + i * (segmentWidth + gap),
+                inner.getY(),
+                segmentWidth,
+                inner.getHeight());
 
-    g.fillRoundedRectangle (
-        fill, 2.0f);
+        g.setColour (
+            i < lit
+                ? colour
+                : juce::Colour (0xff22231f));
+
+        g.fillRoundedRectangle (
+            seg, 1.5f);
+    }
 
     g.setColour (
-        juce::Colour (0xff8d99a3));
+        juce::Colour (0xffa59b87));
 
     g.setFont (
         juce::Font (
-            9.0f,
+            8.5f,
             juce::Font::bold));
 
     g.drawText (
         label,
-        juce::Rectangle<int> (
-            static_cast<int> (area.getX()),
-            static_cast<int> (area.getY()) - 13,
-            static_cast<int> (area.getWidth()),
-            12),
+        static_cast<int> (area.getX()),
+        static_cast<int> (area.getY() - 13.0f),
+        static_cast<int> (area.getWidth()),
+        12,
         juce::Justification::centredLeft);
 }
 
@@ -388,351 +731,332 @@ void SculptChannelAudioProcessorEditor::drawMeterStack (
     juce::Rectangle<float> area,
     int bandIndex)
 {
-    const float gap = 9.0f;
-
-    const float rowH =
+    const float gap = 11.0f;
+    const float h =
         (area.getHeight()
-         - gap * 2.0f)
-        / 3.0f;
+         - gap * 2.0f) / 3.0f;
 
-    drawLevelMeter (
+    drawBarMeter (
         g,
-        area.removeFromTop (rowH),
+        area.removeFromTop (h),
         processor.getResMeter (bandIndex),
-        juce::Colour (0xffd7b06c),
+        juce::Colour (0xffd8a55c),
         "RES");
 
     area.removeFromTop (gap);
 
-    drawLevelMeter (
+    drawBarMeter (
         g,
-        area.removeFromTop (rowH),
+        area.removeFromTop (h),
         processor.getCompMeter (bandIndex),
-        juce::Colour (0xff68bfd3),
+        juce::Colour (0xff67bfd2),
         "COMP");
 
     area.removeFromTop (gap);
 
-    drawLevelMeter (
+    drawBarMeter (
         g,
-        area.removeFromTop (rowH),
+        area.removeFromTop (h),
         processor.getSatMeter (bandIndex),
-        juce::Colour (0xffe28b54),
+        juce::Colour (0xffd87849),
         "SAT");
+}
+
+void SculptChannelAudioProcessorEditor::drawResMatrix (
+    juce::Graphics& g,
+    juce::Rectangle<float> area)
+{
+    g.setColour (
+        juce::Colour (0xff0b0d0d));
+
+    g.fillRoundedRectangle (
+        area, 5.0f);
+
+    g.setColour (
+        juce::Colour (0xff4d493f));
+
+    g.drawRoundedRectangle (
+        area, 5.0f, 1.0f);
+
+    auto plot =
+        area.reduced (8.0f, 8.0f);
+
+    const int count =
+        SculptChannelAudioProcessor::getNumResBands();
+
+    const float gap = 2.0f;
+    const float width =
+        (plot.getWidth()
+         - gap * (count - 1))
+        / static_cast<float> (count);
+
+    const std::array<int, 6> variationIndices {
+        10, 14, 17, 22, 25, 27
+    };
+
+    for (int i = 0; i < count; ++i)
+    {
+        const float value =
+            juce::jlimit (
+                0.0f, 1.0f,
+                processor.getResBandMeter (i));
+
+        auto cell =
+            juce::Rectangle<float> (
+                plot.getX()
+                    + i * (width + gap),
+                plot.getY(),
+                width,
+                plot.getHeight());
+
+        g.setColour (
+            juce::Colour (0xff25261f));
+
+        g.fillRoundedRectangle (
+            cell, 1.5f);
+
+        auto fill =
+            cell.withTop (
+                cell.getBottom()
+                - cell.getHeight() * value);
+
+        g.setColour (
+            value > 0.72f
+                ? juce::Colour (0xffdf7f47)
+                : juce::Colour (0xffd4a35a));
+
+        g.fillRoundedRectangle (
+            fill, 1.5f);
+
+        bool variationPoint = false;
+
+        for (const auto index : variationIndices)
+            variationPoint |= (index == i);
+
+        if (variationPoint)
+        {
+            g.setColour (
+                juce::Colour (0xff67c7d7));
+
+            g.fillEllipse (
+                juce::Rectangle<float> (
+                    3.5f, 3.5f)
+                .withCentre (
+                    { cell.getCentreX(),
+                      cell.getBottom() + 5.0f }));
+        }
+    }
+
+    g.setColour (
+        juce::Colour (0xff9a907c));
+
+    g.setFont (
+        juce::Font (
+            8.0f,
+            juce::Font::bold));
+
+    g.drawText (
+        "20",
+        static_cast<int> (plot.getX()),
+        static_cast<int> (area.getBottom() - 14.0f),
+        35, 12,
+        juce::Justification::centredLeft);
+
+    g.drawText (
+        "1k",
+        static_cast<int> (plot.getCentreX() - 16.0f),
+        static_cast<int> (area.getBottom() - 14.0f),
+        32, 12,
+        juce::Justification::centred);
+
+    g.drawText (
+        "20k",
+        static_cast<int> (plot.getRight() - 35.0f),
+        static_cast<int> (area.getBottom() - 14.0f),
+        35, 12,
+        juce::Justification::centredRight);
 }
 
 void SculptChannelAudioProcessorEditor::paint (
     juce::Graphics& g)
 {
-    const auto bounds =
-        getLocalBounds().toFloat();
+    g.fillAll (
+        juce::Colour (0xff090a0a));
 
-    juce::ColourGradient background (
-        juce::Colour (0xff21262c),
-        bounds.getCentreX(),
-        bounds.getY(),
-        juce::Colour (0xff0d1014),
-        bounds.getCentreX(),
-        bounds.getBottom(),
-        false);
+    auto full =
+        getLocalBounds()
+        .toFloat();
 
-    g.setGradientFill (background);
-    g.fillAll();
+    auto leftCheek =
+        full.removeFromLeft (24.0f)
+        .reduced (2.0f, 10.0f);
 
-    juce::ColourGradient warmGlow (
-        juce::Colour (0x18f1b76a),
-        bounds.getX(),
-        bounds.getY(),
-        juce::Colours::transparentBlack,
-        bounds.getCentreX(),
-        bounds.getHeight() * 0.38f,
-        false);
+    auto rightCheek =
+        full.removeFromRight (24.0f)
+        .reduced (2.0f, 10.0f);
 
-    g.setGradientFill (warmGlow);
-    g.fillRect (
-        bounds.withHeight (230.0f));
+    drawWoodCheek (
+        g, leftCheek, true);
 
-    juce::ColourGradient coolGlow (
-        juce::Colour (0x1067c7db),
-        bounds.getRight(),
-        bounds.getY(),
-        juce::Colours::transparentBlack,
-        bounds.getRight() - 220.0f,
-        bounds.getHeight() * 0.45f,
-        false);
+    drawWoodCheek (
+        g, rightCheek, false);
 
-    g.setGradientFill (coolGlow);
-    g.fillRect (bounds);
+    auto faceplate =
+        getLocalBounds()
+        .toFloat()
+        .withTrimmedLeft (27.0f)
+        .withTrimmedRight (27.0f)
+        .reduced (6.0f);
 
-    auto panel =
-        bounds.reduced (22.0f);
+    drawFaceplateTexture (
+        g, faceplate);
+
+    // engraved header plate
+    auto titlePlate =
+        juce::Rectangle<float> (
+            faceplate.getX() + 22.0f,
+            faceplate.getY() + 17.0f,
+            360.0f,
+            64.0f);
 
     g.setColour (
-        juce::Colour (0xff171b20));
+        juce::Colour (0xff111312));
 
     g.fillRoundedRectangle (
-        panel, 18.0f);
+        titlePlate, 4.0f);
 
     g.setColour (
-        juce::Colour (0x10ffffff));
-
-    for (int i = 0; i < 70; ++i)
-    {
-        const float x =
-            panel.getX()
-            + static_cast<float> (
-                (i * 73)
-                % static_cast<int> (
-                    panel.getWidth()));
-
-        const float y =
-            panel.getY()
-            + static_cast<float> (
-                (i * 41)
-                % static_cast<int> (
-                    panel.getHeight()));
-
-        g.fillEllipse (
-            x, y,
-            1.5f
-                + static_cast<float> (
-                    i % 3),
-            1.5f
-                + static_cast<float> (
-                    (i + 1) % 3));
-    }
-
-    g.setColour (
-        juce::Colour (0xff4d575f));
+        juce::Colour (0xff756a58));
 
     g.drawRoundedRectangle (
-        panel, 18.0f, 1.3f);
+        titlePlate, 4.0f, 1.0f);
 
     g.setColour (
-        juce::Colour (0xfff3ead6));
+        juce::Colour (0xffeadfc6));
 
     g.setFont (
         juce::Font (
-            34.0f,
+            31.0f,
             juce::Font::bold));
 
     g.drawText (
         "SCULPT",
-        48, 34,
-        240, 42,
+        titlePlate.toNearestInt()
+            .withTrimmedLeft (16)
+            .withTrimmedBottom (18),
         juce::Justification::centredLeft);
 
     g.setColour (
-        juce::Colour (0xffe0b06c));
+        juce::Colour (0xffd5a25b));
 
     g.setFont (
         juce::Font (
-            13.0f,
+            10.0f,
             juce::Font::bold));
 
     g.drawText (
-        "CHANNEL",
-        51, 75,
-        120, 20,
+        "CHANNEL  ·  DYNAMIC TONE CONDITIONER",
+        static_cast<int> (titlePlate.getX() + 18.0f),
+        static_cast<int> (titlePlate.getBottom() - 22.0f),
+        static_cast<int> (titlePlate.getWidth() - 30.0f),
+        15,
         juce::Justification::centredLeft);
 
-    g.setColour (
-        juce::Colour (0xff7d8a94));
+    // top input/output bargraphs
+    auto topMeterX =
+        faceplate.getRight() - 250.0f;
 
-    g.setFont (
-        juce::Font (10.5f));
-
-    g.drawText (
-        "DYNAMIC TONE CONDITIONER  •  RES → COMP → SAT",
-        180, 75,
-        360, 20,
-        juce::Justification::centredLeft);
-
-    const bool variationOn =
-        variationButton.getToggleState();
-
-    if (variationOn)
-    {
-        g.setColour (
-            juce::Colour (0xffd5aa6d));
-
-        g.setFont (
-            juce::Font (
-                9.5f,
-                juce::Font::bold));
-
-        g.drawText (
-            "FOCUS  200 • 500 • 1k • 3k • 5k • 8k",
-            555, 75,
-            260, 20,
-            juce::Justification::centredLeft);
-    }
-
-    drawLevelMeter (
+    drawBarMeter (
         g,
-        juce::Rectangle<float> (
-            static_cast<float> (
-                getWidth()) - 245.0f,
-            43.0f,
-            165.0f,
-            11.0f),
+        { topMeterX, faceplate.getY() + 27.0f, 178.0f, 11.0f },
         processor.getInputMeter(),
-        juce::Colour (0xff67c7db),
-        "IN");
+        juce::Colour (0xff67bfd2),
+        "INPUT");
 
-    drawLevelMeter (
+    drawBarMeter (
         g,
-        juce::Rectangle<float> (
-            static_cast<float> (
-                getWidth()) - 245.0f,
-            72.0f,
-            165.0f,
-            11.0f),
+        { topMeterX, faceplate.getY() + 59.0f, 178.0f, 11.0f },
         processor.getOutputMeter(),
-        juce::Colour (0xffe0b06c),
-        "OUT");
+        juce::Colour (0xffd5a25b),
+        "OUTPUT");
 
-    g.setColour (
-        juce::Colour (0xff38414a));
-
-    g.drawLine (
-        48.0f, 108.0f,
-        static_cast<float> (
-            getWidth()) - 48.0f,
-        108.0f,
-        1.0f);
-
+    // central modules
     auto content =
-        getLocalBounds()
-            .reduced (42);
+        faceplate.reduced (24.0f);
 
-    content.removeFromTop (112);
+    content.removeFromTop (102.0f);
+    content.removeFromBottom (116.0f);
 
-    const int outputWidth = 130;
+    auto masterArea =
+        content.removeFromRight (145.0f);
 
-    auto outputArea =
-        content.removeFromRight (
-            outputWidth);
-
-    content.removeFromRight (14);
+    content.removeFromRight (12.0f);
 
     const int gap = 12;
-
-    const int stripW =
+    const int moduleW =
         (content.getWidth()
          - gap * 3) / 4;
 
+    auto modules =
+        content;
+
     for (int i = 0; i < 4; ++i)
     {
-        auto strip =
-            juce::Rectangle<float> (
-                static_cast<float> (
-                    content.getX()
-                    + i * (stripW + gap)),
-                static_cast<float> (
-                    content.getY()),
-                static_cast<float> (
-                    stripW),
-                static_cast<float> (
-                    content.getHeight()));
+        auto module =
+            modules.removeFromLeft (moduleW)
+            .toFloat();
 
-        juce::ColourGradient stripGrad (
-            juce::Colour (0xff22282e),
-            strip.getCentreX(),
-            strip.getY(),
-            juce::Colour (0xff11161b),
-            strip.getCentreX(),
-            strip.getBottom(),
-            false);
+        drawModuleFrame (
+            g, module);
 
-        g.setGradientFill (stripGrad);
+        auto knobZone =
+            module.reduced (16.0f)
+            .withTrimmedTop (44.0f)
+            .withHeight (255.0f);
 
-        g.fillRoundedRectangle (
-            strip, 12.0f);
+        drawKnobScale (
+            g, knobZone);
 
-        g.setColour (
-            juce::Colour (0xff3f4952));
-
-        g.drawRoundedRectangle (
-            strip, 12.0f, 1.0f);
-
-        g.setColour (
-            juce::Colour (0xff8c744a));
-
-        g.fillEllipse (
-            strip.getX() + 8.0f,
-            strip.getY() + 8.0f,
-            5.0f, 5.0f);
-
-        g.fillEllipse (
-            strip.getRight() - 13.0f,
-            strip.getY() + 8.0f,
-            5.0f, 5.0f);
-
-        g.fillEllipse (
-            strip.getX() + 8.0f,
-            strip.getBottom() - 13.0f,
-            5.0f, 5.0f);
-
-        g.fillEllipse (
-            strip.getRight() - 13.0f,
-            strip.getBottom() - 13.0f,
-            5.0f, 5.0f);
-
-        drawScale (
-            g,
-            strip.reduced (14.0f)
-                .withTrimmedTop (70.0f)
-                .withHeight (16.0f));
-
-        auto meterArea =
-            strip.reduced (16.0f);
-
-        meterArea.removeFromTop (
-            300.0f);
-
-        meterArea.removeFromBottom (
-            28.0f);
+        auto meters =
+            module.reduced (18.0f)
+            .withTrimmedTop (315.0f)
+            .withTrimmedBottom (18.0f);
 
         drawMeterStack (
-            g,
-            meterArea,
-            i);
+            g, meters, i);
+
+        modules.removeFromLeft (gap);
     }
 
-    auto outF =
-        outputArea.toFloat();
+    drawModuleFrame (
+        g,
+        masterArea.toFloat());
 
     g.setColour (
-        juce::Colour (0xff1a1f24));
-
-    g.fillRoundedRectangle (
-        outF, 12.0f);
-
-    g.setColour (
-        juce::Colour (0xff404a53));
-
-    g.drawRoundedRectangle (
-        outF, 12.0f, 1.0f);
-
-    g.setColour (
-        juce::Colour (0xff6b7882));
+        juce::Colour (0xff9b907c));
 
     g.setFont (
         juce::Font (
-            9.0f,
+            8.5f,
             juce::Font::bold));
 
     g.drawText (
         "MASTER",
-        outputArea.getX(),
-        outputArea.getBottom() - 42,
-        outputArea.getWidth(),
+        masterArea.getX(),
+        masterArea.getBottom() - 28,
+        masterArea.getWidth(),
         14,
         juce::Justification::centred);
 
+    // RES matrix at bottom
+    auto matrix =
+        faceplate.reduced (28.0f);
+
+    matrix =
+        matrix.removeFromBottom (82.0f);
+
     g.setColour (
-        juce::Colour (0xff54606a));
+        juce::Colour (0xffad9e82));
 
     g.setFont (
         juce::Font (
@@ -740,78 +1064,109 @@ void SculptChannelAudioProcessorEditor::paint (
             juce::Font::bold));
 
     g.drawText (
-        "v0.3  •  BROAD / VARIATION",
-        48,
-        getHeight() - 24,
-        getWidth() - 96,
-        14,
-        juce::Justification::centred);
+        "32-BAND RESONANCE CONTROL",
+        static_cast<int> (matrix.getX()),
+        static_cast<int> (matrix.getY() - 16.0f),
+        230, 14,
+        juce::Justification::centredLeft);
+
+    drawResMatrix (
+        g, matrix);
+
+    // Footer
+    g.setColour (
+        juce::Colour (0xff716959));
+
+    g.setFont (
+        juce::Font (
+            8.0f,
+            juce::Font::bold));
+
+    g.drawText (
+        "RES  →  LINKED COMP  →  4× CHARACTER  •  v0.4",
+        static_cast<int> (faceplate.getX() + 28.0f),
+        static_cast<int> (faceplate.getBottom() - 16.0f),
+        static_cast<int> (faceplate.getWidth() - 56.0f),
+        12,
+        juce::Justification::centredRight);
 }
 
 void SculptChannelAudioProcessorEditor::resized()
 {
+    auto faceplate =
+        getLocalBounds()
+        .withTrimmedLeft (33)
+        .withTrimmedRight (33)
+        .reduced (24);
+
+    // hardware switches across the top centre
+    auto switches =
+        faceplate.removeFromTop (86);
+
+    switches.removeFromLeft (390);
+
     variationButton.setBounds (
-        548, 41, 120, 27);
+        switches.removeFromLeft (160)
+            .withHeight (36)
+            .withY (switches.getY() + 18));
+
+    switches.removeFromLeft (12);
+
+    levelMatchButton.setBounds (
+        switches.removeFromLeft (180)
+            .withHeight (36)
+            .withY (switches.getY() + 18));
 
     auto content =
-        getLocalBounds()
-            .reduced (42);
+        faceplate;
 
-    content.removeFromTop (112);
+    content.removeFromTop (16);
+    content.removeFromBottom (116);
 
-    const int outputWidth = 130;
+    auto masterArea =
+        content.removeFromRight (145);
 
-    auto outputArea =
-        content.removeFromRight (
-            outputWidth);
-
-    content.removeFromRight (14);
+    content.removeFromRight (12);
 
     const int gap = 12;
-
-    const int stripW =
+    const int moduleW =
         (content.getWidth()
          - gap * 3) / 4;
 
     for (int i = 0; i < 4; ++i)
     {
+        auto module =
+            content.removeFromLeft (moduleW)
+            .reduced (14, 12);
+
         auto* band =
             bands[static_cast<size_t> (i)];
 
-        auto strip =
-            content.removeFromLeft (
-                stripW)
-            .reduced (10, 10);
-
         band->title.setBounds (
-            strip.removeFromTop (26));
+            module.removeFromTop (26));
 
         band->freq.setBounds (
-            strip.removeFromTop (17));
+            module.removeFromTop (17));
 
-        strip.removeFromTop (10);
-
-        auto knobArea =
-            strip.removeFromTop (238);
+        module.removeFromTop (8);
 
         band->knob.setBounds (
-            knobArea.reduced (6));
+            module.removeFromTop (260));
 
         content.removeFromLeft (gap);
     }
 
-    auto out =
-        outputArea.reduced (
-            10, 16);
+    auto master =
+        masterArea.reduced (12, 18);
 
     outputLabel.setBounds (
-        out.removeFromTop (24));
+        master.removeFromTop (24));
 
-    out.removeFromTop (18);
+    master.removeFromTop (22);
 
     output.setBounds (
-        out.removeFromTop (180)
-            .reduced (8));
+        master.removeFromTop (190)
+            .reduced (6));
 }
 
 void SculptChannelAudioProcessorEditor::timerCallback()
