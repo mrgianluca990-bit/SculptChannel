@@ -33,3 +33,14 @@ Changes from v0.5:
 - Meter LED coordinates measured from the source image pixels.
 - Baked control faces/LEDs are removed from the background with inpainting before live controls are rendered.
 - DSP unchanged from v0.6.
+
+
+## Sculpt Channel 1.0
+
+This is the first release candidate/final 1.0 codebase.
+
+- DSP is unchanged from the approved v0.6.3 build.
+- GUI is unchanged from the approved precise-alignment build.
+- macOS: VST3 / AU / Standalone.
+- Windows: VST3 x64 / Standalone.
+- AAX is not included in 1.0.
