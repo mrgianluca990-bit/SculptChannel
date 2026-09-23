@@ -121,7 +121,7 @@ void SculptVintageLookAndFeel::drawRotarySlider (
 
     // ivory pointer
     const float pointerLength =
-        knob.getRadius() * 0.72f;
+        (knob.getWidth() * 0.5f) * 0.72f;
 
     const auto end =
         centre
