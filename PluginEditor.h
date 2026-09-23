@@ -22,7 +22,8 @@ class SculptChannelAudioProcessorEditor final
       private juce::Timer
 {
 public:
-    explicit SculptChannelAudioProcessorEditor (SculptChannelAudioProcessor&);
+    explicit SculptChannelAudioProcessorEditor (
+        SculptChannelAudioProcessor&);
     ~SculptChannelAudioProcessorEditor() override;
 
     void paint (juce::Graphics&) override;
@@ -37,15 +38,30 @@ private:
         juce::Slider knob;
         juce::Label title;
         juce::Label freq;
-        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+
+        std::unique_ptr<
+            juce::AudioProcessorValueTreeState::SliderAttachment>
+            attachment;
     };
 
     BandUI low, mid, high, presence;
-    std::array<BandUI*, 4> bands { &low, &mid, &high, &presence };
+
+    std::array<BandUI*, 4> bands {
+        &low, &mid, &high, &presence
+    };
+
+    juce::TextButton variationButton { "VARIATION" };
+
+    std::unique_ptr<
+        juce::AudioProcessorValueTreeState::ButtonAttachment>
+        variationAttachment;
 
     juce::Slider output;
     juce::Label outputLabel;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> outputAttachment;
+
+    std::unique_ptr<
+        juce::AudioProcessorValueTreeState::SliderAttachment>
+        outputAttachment;
 
     void setupBand (BandUI&,
                     const juce::String& title,
@@ -56,10 +72,17 @@ private:
                          juce::Rectangle<float>,
                          int bandIndex);
 
-    void drawAnalogScale (juce::Graphics&,
-                          juce::Rectangle<float>);
+    void drawScale (juce::Graphics&,
+                    juce::Rectangle<float>);
+
+    void drawLevelMeter (juce::Graphics&,
+                         juce::Rectangle<float>,
+                         float value,
+                         juce::Colour colour,
+                         const juce::String& label);
 
     void timerCallback() override;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SculptChannelAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (
+        SculptChannelAudioProcessorEditor)
 };

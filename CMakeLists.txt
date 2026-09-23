@@ -1,10 +1,13 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(SculptChannel VERSION 0.1.0)
+project(SculptChannel VERSION 0.3.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
+
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
+endif()
 
 include(FetchContent)
 
@@ -17,17 +20,19 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(JUCE)
 
+set(SCULPT_FORMATS VST3 Standalone)
+
+if(APPLE)
+    list(APPEND SCULPT_FORMATS AU)
+endif()
+
 juce_add_plugin(SculptChannel
     COMPANY_NAME "Sculpt"
     BUNDLE_ID "audio.sculpt.channel"
     PLUGIN_MANUFACTURER_CODE ScPt
     PLUGIN_CODE ScCh
 
-    FORMATS
-        VST3
-        AU
-        Standalone
-
+    FORMATS ${SCULPT_FORMATS}
     PRODUCT_NAME "Sculpt Channel"
 
     IS_SYNTH FALSE

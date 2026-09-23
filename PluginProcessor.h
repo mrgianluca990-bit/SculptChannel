@@ -40,22 +40,34 @@ public:
     float getResMeter (int band) const noexcept;
     float getCompMeter (int band) const noexcept;
     float getSatMeter (int band) const noexcept;
+    float getInputMeter() const noexcept  { return inputMeter.load(); }
+    float getOutputMeter() const noexcept { return outputMeter.load(); }
 
 private:
     static constexpr int numBands = 4;
+    static constexpr int numVariationBands = 6;
 
     struct BandState
     {
-        juce::dsp::StateVariableTPTFilter<float> preFilter;
+        juce::dsp::StateVariableTPTFilter<float> filter;
         juce::dsp::Compressor<float> compressor;
         juce::AudioBuffer<float> work;
-        float detectorEnv = 0.0f;
-        float smoothEnergy = 0.0f;
-        float previousInput = 0.0f;
+        float fastEnv = 0.0f;
+        float slowEnv = 0.0f;
+    };
+
+    struct VariationBandState
+    {
+        juce::dsp::StateVariableTPTFilter<float> filter;
+        juce::AudioBuffer<float> work;
+        float fastEnv = 0.0f;
+        float slowEnv = 0.0f;
     };
 
     juce::AudioProcessorValueTreeState apvts;
+
     std::array<BandState, numBands> bands;
+    std::array<VariationBandState, numVariationBands> variationBands;
 
     juce::AudioBuffer<float> dryBuffer;
     juce::SmoothedValue<float> outputGain;
@@ -66,10 +78,12 @@ private:
     std::array<std::atomic<float>, numBands> compMeters;
     std::array<std::atomic<float>, numBands> satMeters;
 
-    std::array<float, numBands> centreHz  { 85.0f, 700.0f, 3500.0f, 10000.0f };
-    std::array<float, numBands> qValues   { 0.70f, 1.15f, 0.95f, 0.70f };
+    std::atomic<float> inputMeter  { 0.0f };
+    std::atomic<float> outputMeter { 0.0f };
 
     void configureBandFilters();
+    void configureVariationFilters();
+
     float processResonanceControl (BandState& state,
                                    float sample,
                                    float amount,
@@ -82,7 +96,16 @@ private:
 
     void processBand (juce::AudioBuffer<float>& source,
                       int bandIndex,
-                      float macroValue);
+                      float macroValue,
+                      bool broadResonanceEnabled);
+
+    void processVariationSoothe (juce::AudioBuffer<float>& source,
+                                 const std::array<float, numBands>& macroValues);
+
+    float getVariationAmount (int variationBand,
+                              const std::array<float, numBands>& macroValues) const noexcept;
+
+    int variationBandToMacroMeter (int variationBand) const noexcept;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SculptChannelAudioProcessor)
 };
