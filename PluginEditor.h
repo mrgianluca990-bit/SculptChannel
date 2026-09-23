@@ -4,22 +4,16 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
 
-class SculptVintageLookAndFeel final : public juce::LookAndFeel_V4
+class SculptOverlayLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
-    SculptVintageLookAndFeel();
-
-    void drawRotarySlider (juce::Graphics&,
-                           int x, int y, int width, int height,
+    void drawRotarySlider (juce::Graphics&, int x, int y, int width, int height,
                            float sliderPosProportional,
                            float rotaryStartAngle,
                            float rotaryEndAngle,
                            juce::Slider&) override;
 
-    void drawToggleButton (juce::Graphics&,
-                           juce::ToggleButton&,
-                           bool shouldDrawButtonAsHighlighted,
-                           bool shouldDrawButtonAsDown) override;
+    void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool, bool) override;
 };
 
 class SculptChannelAudioProcessorEditor final
@@ -27,8 +21,7 @@ class SculptChannelAudioProcessorEditor final
       private juce::Timer
 {
 public:
-    explicit SculptChannelAudioProcessorEditor (
-        SculptChannelAudioProcessor&);
+    explicit SculptChannelAudioProcessorEditor (SculptChannelAudioProcessor&);
     ~SculptChannelAudioProcessorEditor() override;
 
     void paint (juce::Graphics&) override;
@@ -36,65 +29,30 @@ public:
 
 private:
     SculptChannelAudioProcessor& processor;
-    SculptVintageLookAndFeel look;
+    SculptOverlayLookAndFeel look;
+    juce::Image background;
 
-    struct BandUI
+    struct KnobUI
     {
-        juce::Slider knob;
-        juce::Label title;
-        juce::Label freq;
-
-        std::unique_ptr<
-            juce::AudioProcessorValueTreeState::SliderAttachment>
-            attachment;
+        juce::Slider slider;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
     };
 
-    BandUI low, mid, high, presence;
+    KnobUI low, mid, high, presence, output;
+    juce::ToggleButton variationButton { "VAR" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> variationAttachment;
 
-    std::array<BandUI*, 4> bands {
-        &low, &mid, &high, &presence
-    };
+    void setupKnob (KnobUI&, const juce::String& param, bool isOutput = false);
+    juce::Rectangle<int> knobBoundsForIndex (int index) const;
+    juce::Rectangle<int> outputKnobBounds() const;
+    juce::Rectangle<int> varButtonBounds() const;
 
-    juce::ToggleButton variationButton { "VARIATION" };
-    juce::ToggleButton levelMatchButton { "LEVEL MATCH" };
-
-    std::unique_ptr<
-        juce::AudioProcessorValueTreeState::ButtonAttachment>
-        variationAttachment;
-
-    std::unique_ptr<
-        juce::AudioProcessorValueTreeState::ButtonAttachment>
-        levelMatchAttachment;
-
-    juce::Slider output;
-    juce::Label outputLabel;
-
-    std::unique_ptr<
-        juce::AudioProcessorValueTreeState::SliderAttachment>
-        outputAttachment;
-
-    void setupBand (BandUI&,
-                    const juce::String& title,
-                    const juce::String& freq,
-                    const juce::String& parameterID);
-
-    void drawFaceplateTexture (juce::Graphics&, juce::Rectangle<float>);
-    void drawWoodCheek (juce::Graphics&, juce::Rectangle<float>);
-    void drawModuleFrame (juce::Graphics&, juce::Rectangle<float>);
-    void drawKnobScale (juce::Graphics&, juce::Rectangle<float>);
-
-    void drawMeterStack (juce::Graphics&,
-                         juce::Rectangle<float>,
-                         int bandIndex);
-
-    void drawBarMeter (juce::Graphics&,
-                       juce::Rectangle<float>,
-                       float value,
-                       juce::Colour colour,
-                       const juce::String& label);
-
+    void drawSegmentMeter (juce::Graphics&, juce::Rectangle<float>, float value,
+                           int segments,
+                           juce::Colour low, juce::Colour high,
+                           float alpha = 0.9f);
+    void drawAllMeters (juce::Graphics&);
     void timerCallback() override;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (
-        SculptChannelAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SculptChannelAudioProcessorEditor)
 };

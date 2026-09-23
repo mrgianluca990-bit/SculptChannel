@@ -1,53 +1,34 @@
-# Sculpt Channel v0.5
+# Sculpt Channel v0.6
 
-## Core philosophy
+Changes from v0.5:
 
-v0.5 returns the plugin to the intended musical behaviour:
+- Level Match removed completely.
+- Compression reduced significantly:
+  - later onset
+  - lower ratio
+  - higher threshold
+  - less gain reduction overall
+- Saturation increased significantly:
+  - earlier onset
+  - stronger drive
+  - stronger wet blend
+  - second nonlinear stage at high values
+- RES / VAR architecture rewritten:
+  - 32 narrow bands are DETECTORS ONLY
+  - no narrow band subtraction is performed in the audio path
+  - detectors generate four smooth macro damping values
+  - therefore VAR cannot create comb-filter behaviour
+- VAR only increases detector sensitivity around:
+  200 Hz, 500 Hz, 1 kHz, 3 kHz, 5 kHz, 8 kHz
+- Maximum soothe action is intentionally moderate and broad.
+- GUI simplified:
+  - no Level Match control
+  - no 32-band meter
+  - dark rack/studio direction with red, amber, cream and cyan accents
 
-**EQ -> COMP -> SAT**
 
-The four macro controls now behave like broad EQ bands being pushed into a compressor
-and then into an analogue-style nonlinear stage.
-
-### Positive values
-- first: broad EQ boost becomes audible
-- then: compression becomes increasingly obvious
-- finally: the band starts to distort/saturate
-
-The saturation begins after the compressor is already working.
-
-### Negative values
-- broad EQ cut is obvious
-- a lighter amount of compression remains active
-- saturation is almost absent
-
-## 32-band Soothe guardrail
-
-The 32-band engine still exists, but it is no longer the protagonist.
-
-It runs after EQ -> COMP -> SAT and only reacts when a narrow area becomes clearly
-more resonant than its neighbours or than its own slow temporal baseline.
-
-Normal maximum reduction is intentionally small, roughly in the 0.5–3 dB region.
-
-### VARIATION
-Variation increases sensitivity around:
-- 200 Hz
-- 500 Hz
-- 1 kHz
-- 3 kHz
-- 5 kHz
-- 8 kHz
-
-Those focused areas can reach stronger correction, up to roughly 4–5 dB when necessary.
-
-## GUI
-- removed the 32-band activity display
-- kept only useful RES / COMP / SAT meters per macro
-- vintage dark enamel / bakelite / brass / wood visual language
-- Variation and Level Match remain hardware-style toggle switches
-
-## Processing
-- internally 4x oversampled
-- stereo-linked compressor detection
-- optional slow Level Match
+## v0.6.1 GUI implementation
+- GUI now uses the approved mockup image as the real plugin background.
+- Added BinaryData asset embedding (`assets/sculpt_gui_bg.png`).
+- Dynamic controls are overlaid directly on the artwork: 4 macro knobs, output, VAR, IN/OUT meters, and RES/COMP/SAT meters.
+- Level Match remains removed.

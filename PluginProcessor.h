@@ -54,37 +54,35 @@ private:
         juce::AudioBuffer<float> band;
         juce::AudioBuffer<float> originalBand;
 
-        float compressorEnvelope = 0.0f;
-        float compressorGain = 1.0f;
+        float compEnv = 0.0f;
+        float compGain = 1.0f;
+        float sootheGain = 1.0f;
     };
 
-    struct ResBandState
+    struct ResDetectorState
     {
         juce::dsp::StateVariableTPTFilter<float> filter;
         juce::AudioBuffer<float> work;
-
         float slowEnergy = 0.0f;
-        float reduction = 0.0f;
     };
 
     juce::AudioProcessorValueTreeState apvts;
 
     std::array<MacroBandState, numMacroBands> macroBands;
-    std::array<ResBandState, numResBands> resBands;
+    std::array<ResDetectorState, numResBands> resDetectors;
 
-    std::array<std::array<float, numMacroBands>, numResBands> resMacroWeights {};
+    std::array<std::array<float, numMacroBands>, numResBands> detectorWeights {};
     std::array<float, numResBands> variationSensitivity {};
 
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampler;
-
-    juce::SmoothedValue<float> outputGain;
-    juce::AudioBuffer<float> dryBaseRate;
 
     double baseSampleRate = 44100.0;
     double internalSampleRate = 176400.0;
     int maxInternalBlockSize = 2048;
 
-    float levelMatchDbState = 0.0f;
+    juce::SmoothedValue<float> outputGain;
+
+    std::array<float, numMacroBands> soothePressure {};
 
     std::array<std::atomic<float>, numMacroBands> resMeters;
     std::array<std::atomic<float>, numMacroBands> compMeters;
@@ -102,30 +100,25 @@ private:
     };
 
     void configureMacroFilters();
-    void configureResFilters();
-    void computeResWeighting();
+    void configureResDetectors();
+    void computeDetectorWeights();
 
     void processInternal (juce::AudioBuffer<float>&);
+    void analyseResonance (const juce::AudioBuffer<float>&,
+                           const std::array<float, numMacroBands>& macros,
+                           bool variationEnabled);
 
     void processMacroBand (juce::AudioBuffer<float>&,
                            int bandIndex,
-                           float macroValue);
+                           float macroValue,
+                           float sootheAmount);
 
-    void processSootheGuardrail (juce::AudioBuffer<float>&,
-                                 const std::array<float, numMacroBands>& macros,
-                                 bool variationEnabled);
-
-    float saturateBandSample (float sample,
-                              float positiveAmount,
-                              float negativeAmount,
-                              int bandIndex) const noexcept;
+    float saturate (float sample,
+                    float satAmount,
+                    int bandIndex) const noexcept;
 
     float getBlockRMS (const juce::AudioBuffer<float>&) const noexcept;
-    float macroCurve (float magnitude) const noexcept;
-
-    void applyLevelMatchAndOutput (juce::AudioBuffer<float>&,
-                                   float inputRms,
-                                   bool levelMatchEnabled);
+    float curve (float magnitude) const noexcept;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SculptChannelAudioProcessor)
 };

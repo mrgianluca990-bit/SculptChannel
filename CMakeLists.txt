@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(SculptChannel VERSION 0.5.0)
+project(SculptChannel VERSION 0.6.1)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,10 +21,14 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(JUCE)
 
 set(SCULPT_FORMATS VST3 Standalone)
-
 if(APPLE)
     list(APPEND SCULPT_FORMATS AU)
 endif()
+
+juce_add_binary_data(SculptAssets
+    SOURCES
+        assets/sculpt_gui_bg.png
+)
 
 juce_add_plugin(SculptChannel
     COMPANY_NAME "Sculpt"
@@ -33,7 +37,6 @@ juce_add_plugin(SculptChannel
     PLUGIN_CODE ScCh
     FORMATS ${SCULPT_FORMATS}
     PRODUCT_NAME "Sculpt Channel"
-
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
@@ -59,6 +62,7 @@ target_compile_definitions(SculptChannel
 
 target_link_libraries(SculptChannel
     PRIVATE
+        SculptAssets
         juce::juce_audio_utils
         juce::juce_dsp
     PUBLIC
