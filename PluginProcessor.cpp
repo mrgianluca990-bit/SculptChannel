@@ -9,10 +9,9 @@ SculptChannelAudioProcessor::SculptChannelAudioProcessor()
         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "PARAMETERS", createParameterLayout())
 {
-    for (auto& m : resMeters)      m.store (0.0f);
-    for (auto& m : compMeters)     m.store (0.0f);
-    for (auto& m : satMeters)      m.store (0.0f);
-    for (auto& m : resBandMeters)  m.store (0.0f);
+    for (auto& m : resMeters)  m.store (0.0f);
+    for (auto& m : compMeters) m.store (0.0f);
+    for (auto& m : satMeters)  m.store (0.0f);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout
@@ -83,7 +82,7 @@ void SculptChannelAudioProcessor::prepareToPlay (double sampleRate, int samplesP
     internalSampleRate = sampleRate * 4.0;
     maxInternalBlockSize = samplesPerBlock * 4 + 64;
 
-    juce::dsp::ProcessSpec internalSpec {
+    juce::dsp::ProcessSpec spec {
         internalSampleRate,
         static_cast<juce::uint32> (maxInternalBlockSize),
         static_cast<juce::uint32> (channels)
@@ -91,10 +90,15 @@ void SculptChannelAudioProcessor::prepareToPlay (double sampleRate, int samplesP
 
     for (auto& band : macroBands)
     {
-        band.filter.prepare (internalSpec);
+        band.filter.prepare (spec);
         band.filter.reset();
 
-        band.work.setSize (
+        band.band.setSize (
+            static_cast<int> (channels),
+            maxInternalBlockSize,
+            false, false, true);
+
+        band.originalBand.setSize (
             static_cast<int> (channels),
             maxInternalBlockSize,
             false, false, true);
@@ -105,7 +109,7 @@ void SculptChannelAudioProcessor::prepareToPlay (double sampleRate, int samplesP
 
     for (auto& band : resBands)
     {
-        band.filter.prepare (internalSpec);
+        band.filter.prepare (spec);
         band.filter.reset();
 
         band.work.setSize (
@@ -114,7 +118,7 @@ void SculptChannelAudioProcessor::prepareToPlay (double sampleRate, int samplesP
             false, false, true);
 
         band.slowEnergy = 0.0f;
-        band.currentReduction = 0.0f;
+        band.reduction = 0.0f;
     }
 
     dryBaseRate.setSize (
@@ -146,36 +150,37 @@ void SculptChannelAudioProcessor::configureMacroFilters()
 
     setup (macroBands[0].filter,
            juce::dsp::StateVariableTPTFilterType::lowpass,
-           210.0f, 0.62f);
+           185.0f, 0.56f);
 
     setup (macroBands[1].filter,
            juce::dsp::StateVariableTPTFilterType::bandpass,
-           700.0f, 0.82f);
+           700.0f, 0.76f);
 
     setup (macroBands[2].filter,
            juce::dsp::StateVariableTPTFilterType::bandpass,
-           3500.0f, 0.82f);
+           3500.0f, 0.72f);
 
     setup (macroBands[3].filter,
            juce::dsp::StateVariableTPTFilterType::highpass,
-           6500.0f, 0.64f);
+           7000.0f, 0.58f);
 }
 
 void SculptChannelAudioProcessor::configureResFilters()
 {
-    constexpr float oneThirdOctaveQ = 4.25f;
+    constexpr float sootheQ = 4.8f;
 
     for (int i = 0; i < numResBands; ++i)
     {
         auto& f = resBands[static_cast<size_t> (i)].filter;
 
         f.setType (juce::dsp::StateVariableTPTFilterType::bandpass);
+
         f.setCutoffFrequency (
             juce::jmin (
                 resFrequencies[static_cast<size_t> (i)],
                 static_cast<float> (internalSampleRate * 0.44)));
 
-        f.setResonance (oneThirdOctaveQ);
+        f.setResonance (sootheQ);
     }
 }
 
@@ -185,8 +190,8 @@ void SculptChannelAudioProcessor::computeResWeighting()
         90.0f, 700.0f, 3500.0f, 10000.0f
     };
 
-    constexpr std::array<float, numMacroBands> widthsInOctaves {
-        1.55f, 1.35f, 1.25f, 1.35f
+    constexpr std::array<float, numMacroBands> widths {
+        1.55f, 1.35f, 1.25f, 1.30f
     };
 
     constexpr std::array<float, 6> variationCentres {
@@ -205,10 +210,13 @@ void SculptChannelAudioProcessor::computeResWeighting()
                 std::log2 (f / centres[static_cast<size_t> (m)]);
 
             const float width =
-                widthsInOctaves[static_cast<size_t> (m)];
+                widths[static_cast<size_t> (m)];
 
             const float weight =
-                std::exp (-0.5f * (distance * distance) / (width * width));
+                std::exp (
+                    -0.5f
+                    * (distance * distance)
+                    / (width * width));
 
             resMacroWeights[static_cast<size_t> (b)][static_cast<size_t> (m)] =
                 weight;
@@ -226,27 +234,32 @@ void SculptChannelAudioProcessor::computeResWeighting()
 
         for (const auto target : variationCentres)
         {
-            const float distance = std::log2 (f / target);
+            const float distance =
+                std::log2 (f / target);
+
             const float local =
-                std::exp (-0.5f * (distance * distance) / (0.19f * 0.19f));
+                std::exp (
+                    -0.5f
+                    * (distance * distance)
+                    / (0.18f * 0.18f));
 
             focus = juce::jmax (focus, local);
         }
 
         variationSensitivity[static_cast<size_t> (b)] =
-            1.0f + 0.95f * focus;
+            1.0f + 0.70f * focus;
     }
 }
 
-float SculptChannelAudioProcessor::macroActivityCurve (float magnitude) const noexcept
+float SculptChannelAudioProcessor::macroCurve (float magnitude) const noexcept
 {
     magnitude = juce::jlimit (0.0f, 1.0f, magnitude);
 
-    // More action in the first half, without losing the last quarter.
+    // Audible from the first third, progressive through the full travel.
     return juce::jlimit (
         0.0f, 1.0f,
-        0.52f * magnitude
-        + 0.48f * std::sqrt (magnitude));
+        0.42f * magnitude
+        + 0.58f * std::pow (magnitude, 0.72f));
 }
 
 float SculptChannelAudioProcessor::getBlockRMS (
@@ -255,338 +268,72 @@ float SculptChannelAudioProcessor::getBlockRMS (
     if (buffer.getNumSamples() <= 0 || buffer.getNumChannels() <= 0)
         return 0.0f;
 
-    double sumSquares = 0.0;
-    const auto count =
+    double sum = 0.0;
+    const double count =
         static_cast<double> (
-            buffer.getNumSamples() * buffer.getNumChannels());
+            buffer.getNumSamples()
+            * buffer.getNumChannels());
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
-        const auto* data = buffer.getReadPointer (ch);
+        const auto* data =
+            buffer.getReadPointer (ch);
 
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
             const double s = data[i];
-            sumSquares += s * s;
+            sum += s * s;
         }
     }
 
     return static_cast<float> (
-        std::sqrt (sumSquares / juce::jmax (1.0, count)));
+        std::sqrt (
+            sum / juce::jmax (1.0, count)));
 }
 
-void SculptChannelAudioProcessor::processResEngine (
-    juce::AudioBuffer<float>& source,
-    const std::array<float, numMacroBands>& macros,
-    bool variationEnabled)
-{
-    std::array<float, numResBands> energies {};
-    std::array<float, numResBands> energiesDb {};
-
-    std::array<float, numMacroBands> macroResPeak {};
-    macroResPeak.fill (0.0f);
-
-    // First pass: 32 narrow analysis bands from the same pre-RES signal.
-    for (int b = 0; b < numResBands; ++b)
-    {
-        auto& state = resBands[static_cast<size_t> (b)];
-
-        state.work.setSize (
-            source.getNumChannels(),
-            source.getNumSamples(),
-            false, false, true);
-
-        state.work.makeCopyOf (source, true);
-
-        juce::dsp::AudioBlock<float> block (state.work);
-        juce::dsp::ProcessContextReplacing<float> context (block);
-        state.filter.process (context);
-
-        const float rms = getBlockRMS (state.work);
-
-        energies[static_cast<size_t> (b)] = rms;
-        energiesDb[static_cast<size_t> (b)] =
-            juce::Decibels::gainToDecibels (rms + 1.0e-7f, -120.0f);
-
-        const float blockSeconds =
-            static_cast<float> (
-                source.getNumSamples() / internalSampleRate);
-
-        const float slowSeconds =
-            juce::jmap (
-                std::log2 (
-                    juce::jlimit (20.0f, 20000.0f,
-                                  resFrequencies[static_cast<size_t> (b)]) / 20.0f)
-                    / std::log2 (1000.0f),
-                0.34f, 0.12f);
-
-        const float slowCoeff =
-            std::exp (-blockSeconds / juce::jmax (0.04f, slowSeconds));
-
-        if (state.slowEnergy <= 1.0e-7f)
-            state.slowEnergy = rms;
-        else
-            state.slowEnergy =
-                slowCoeff * state.slowEnergy
-                + (1.0f - slowCoeff) * rms;
-    }
-
-    // Second pass: compare each band against local neighbours + temporal baseline.
-    for (int b = 0; b < numResBands; ++b)
-    {
-        auto& state = resBands[static_cast<size_t> (b)];
-
-        float weightedMagnitude = 0.0f;
-        float weightedSigned = 0.0f;
-
-        for (int m = 0; m < numMacroBands; ++m)
-        {
-            const float normalized =
-                juce::jlimit (
-                    -1.0f, 1.0f,
-                    macros[static_cast<size_t> (m)] / 100.0f);
-
-            const float w =
-                resMacroWeights[static_cast<size_t> (b)][static_cast<size_t> (m)];
-
-            weightedMagnitude += std::abs (normalized) * w;
-            weightedSigned += normalized * w;
-        }
-
-        const float activity =
-            macroActivityCurve (
-                juce::jlimit (0.0f, 1.0f, weightedMagnitude));
-
-        if (activity <= 0.0005f)
-        {
-            state.currentReduction *= 0.90f;
-            resBandMeters[static_cast<size_t> (b)].store (
-                state.currentReduction);
-            continue;
-        }
-
-        const float localPolarity =
-            weightedMagnitude > 0.0001f
-                ? weightedSigned / weightedMagnitude
-                : 0.0f;
-
-        const float negativeBoost =
-            1.0f + 0.38f * juce::jmax (0.0f, -localPolarity);
-
-        const float positiveBoost =
-            1.0f + 0.10f * juce::jmax (0.0f,  localPolarity);
-
-        float neighbourDb = 0.0f;
-        float neighbourWeight = 0.0f;
-
-        for (int offset = -2; offset <= 2; ++offset)
-        {
-            if (offset == 0)
-                continue;
-
-            const int n = b + offset;
-
-            if (n < 0 || n >= numResBands)
-                continue;
-
-            const float w = (std::abs (offset) == 1 ? 1.0f : 0.55f);
-
-            neighbourDb += energiesDb[static_cast<size_t> (n)] * w;
-            neighbourWeight += w;
-        }
-
-        if (neighbourWeight > 0.0f)
-            neighbourDb /= neighbourWeight;
-        else
-            neighbourDb = energiesDb[static_cast<size_t> (b)];
-
-        const float variationBoost =
-            variationEnabled
-                ? variationSensitivity[static_cast<size_t> (b)]
-                : 1.0f;
-
-        // At high macro values, RES begins acting on much smaller protrusions.
-        float spectralThresholdDb =
-            juce::jmap (activity, 4.0f, 1.10f);
-
-        if (variationEnabled)
-            spectralThresholdDb /=
-                juce::jlimit (
-                    1.0f, 1.75f,
-                    variationBoost);
-
-        const float spectralExcessDb =
-            juce::jmax (
-                0.0f,
-                energiesDb[static_cast<size_t> (b)]
-                - neighbourDb
-                - spectralThresholdDb);
-
-        const float slowDb =
-            juce::Decibels::gainToDecibels (
-                state.slowEnergy + 1.0e-7f,
-                -120.0f);
-
-        const float temporalThresholdDb =
-            juce::jmap (activity, 3.0f, 0.80f);
-
-        const float temporalExcessDb =
-            juce::jmax (
-                0.0f,
-                energiesDb[static_cast<size_t> (b)]
-                - slowDb
-                - temporalThresholdDb);
-
-        float desiredReductionDb =
-            (spectralExcessDb * 1.55f
-             + temporalExcessDb * 0.48f)
-            * activity
-            * negativeBoost
-            * positiveBoost
-            * variationBoost;
-
-        float maxReductionDb =
-            juce::jmap (activity, 2.0f, 11.5f);
-
-        if (localPolarity < 0.0f)
-            maxReductionDb += 2.0f * activity;
-
-        if (variationEnabled)
-            maxReductionDb +=
-                2.0f
-                * (variationBoost - 1.0f)
-                * activity;
-
-        desiredReductionDb =
-            juce::jlimit (
-                0.0f,
-                juce::jmin (15.0f, maxReductionDb),
-                desiredReductionDb);
-
-        const float targetReduction =
-            1.0f
-            - juce::Decibels::decibelsToGain (
-                -desiredReductionDb);
-
-        // Smooth at block rate: quick attack, slower release.
-        const float blockSeconds =
-            static_cast<float> (
-                source.getNumSamples() / internalSampleRate);
-
-        const float attackSeconds =
-            juce::jmap (
-                resFrequencies[static_cast<size_t> (b)],
-                20.0f, 20000.0f,
-                0.030f, 0.004f);
-
-        const float releaseSeconds =
-            juce::jmap (
-                resFrequencies[static_cast<size_t> (b)],
-                20.0f, 20000.0f,
-                0.240f, 0.075f);
-
-        const float coeff =
-            std::exp (
-                -blockSeconds
-                / (targetReduction > state.currentReduction
-                    ? attackSeconds
-                    : releaseSeconds));
-
-        const float previousReduction =
-            state.currentReduction;
-
-        state.currentReduction =
-            coeff * state.currentReduction
-            + (1.0f - coeff) * targetReduction;
-
-        const float meterValue =
-            juce::jlimit (
-                0.0f, 1.0f,
-                desiredReductionDb / 12.0f);
-
-        resBandMeters[static_cast<size_t> (b)].store (meterValue);
-
-        for (int m = 0; m < numMacroBands; ++m)
-        {
-            const float weightedMeter =
-                meterValue
-                * resMacroWeights[static_cast<size_t> (b)][static_cast<size_t> (m)];
-
-            macroResPeak[static_cast<size_t> (m)] =
-                juce::jmax (
-                    macroResPeak[static_cast<size_t> (m)],
-                    weightedMeter);
-        }
-
-        const int samples = source.getNumSamples();
-
-        for (int ch = 0; ch < source.getNumChannels(); ++ch)
-        {
-            auto* dst = source.getWritePointer (ch);
-            const auto* narrow = state.work.getReadPointer (ch);
-
-            for (int i = 0; i < samples; ++i)
-            {
-                const float t =
-                    samples > 1
-                        ? static_cast<float> (i) / static_cast<float> (samples - 1)
-                        : 1.0f;
-
-                const float reduction =
-                    previousReduction
-                    + (state.currentReduction - previousReduction) * t;
-
-                dst[i] -= narrow[i] * reduction;
-            }
-        }
-    }
-
-    for (int m = 0; m < numMacroBands; ++m)
-        resMeters[static_cast<size_t> (m)].store (
-            juce::jlimit (
-                0.0f, 1.0f,
-                macroResPeak[static_cast<size_t> (m)] * 1.35f));
-}
-
-float SculptChannelAudioProcessor::applyBandSaturation (
+float SculptChannelAudioProcessor::saturateBandSample (
     float sample,
     float positiveAmount,
     float negativeAmount,
     int bandIndex) const noexcept
 {
     const float pos =
-        juce::jlimit (0.0f, 1.0f, positiveAmount);
+        juce::jlimit (
+            0.0f, 1.0f,
+            positiveAmount);
 
     const float neg =
-        juce::jlimit (0.0f, 1.0f, negativeAmount);
+        juce::jlimit (
+            0.0f, 1.0f,
+            negativeAmount);
 
-    float maxDrive = 3.2f;
-    float maxBlend = 0.45f;
+    float maxDrive = 3.0f;
+    float maxBlend = 0.52f;
     float asymmetry = 0.0f;
 
     switch (bandIndex)
     {
         case 0:
-            maxDrive = 4.0f;
-            maxBlend = 0.58f;
-            asymmetry = 0.040f;
+            maxDrive = 3.5f;
+            maxBlend = 0.60f;
+            asymmetry = 0.038f;
             break;
 
         case 1:
-            maxDrive = 3.6f;
-            maxBlend = 0.52f;
+            maxDrive = 3.25f;
+            maxBlend = 0.57f;
             asymmetry = 0.030f;
             break;
 
         case 2:
-            maxDrive = 3.0f;
-            maxBlend = 0.42f;
+            maxDrive = 2.9f;
+            maxBlend = 0.50f;
             asymmetry = 0.018f;
             break;
 
         default:
             maxDrive = 2.55f;
-            maxBlend = 0.34f;
+            maxBlend = 0.42f;
             asymmetry = 0.010f;
             break;
     }
@@ -594,7 +341,7 @@ float SculptChannelAudioProcessor::applyBandSaturation (
     const float satAmount =
         juce::jlimit (
             0.0f, 1.0f,
-            pos + neg * 0.10f);
+            pos + neg * 0.08f);
 
     const float drive =
         1.0f
@@ -608,18 +355,21 @@ float SculptChannelAudioProcessor::applyBandSaturation (
     const float asym =
         asymmetry * pos;
 
-    const float preShaped =
+    const float biased =
         sample
         + asym
           * sample * sample
           * (sample >= 0.0f ? 1.0f : -1.0f);
 
-    const float saturated =
-        std::tanh (preShaped * drive)
-        / juce::jmax (1.0f, drive);
+    // Intentionally NOT fully level-normalised:
+    // at the top of the control the stage must audibly distort.
+    const float distorted =
+        std::tanh (
+            biased * drive);
 
     return sample
-        + (saturated - sample) * blend;
+        + (distorted - sample)
+          * blend;
 }
 
 void SculptChannelAudioProcessor::processMacroBand (
@@ -635,54 +385,88 @@ void SculptChannelAudioProcessor::processMacroBand (
             -1.0f, 1.0f,
             macroValue / 100.0f);
 
-    const float magnitude =
-        std::abs (normalized);
-
-    const float activity =
-        macroActivityCurve (magnitude);
-
     const float positive =
         juce::jmax (0.0f, normalized);
 
     const float negative =
         juce::jmax (0.0f, -normalized);
 
-    state.work.setSize (
+    const float magnitude =
+        std::abs (normalized);
+
+    const float activity =
+        macroCurve (magnitude);
+
+    state.band.setSize (
         source.getNumChannels(),
         source.getNumSamples(),
         false, false, true);
 
-    state.work.makeCopyOf (source, true);
+    state.band.makeCopyOf (
+        source, true);
 
-    juce::dsp::AudioBlock<float> block (state.work);
-    juce::dsp::ProcessContextReplacing<float> context (block);
-    state.filter.process (context);
+    juce::dsp::AudioBlock<float> bandBlock (
+        state.band);
 
-    // Compression: deliberately stronger on the positive side.
+    juce::dsp::ProcessContextReplacing<float> filterContext (
+        bandBlock);
+
+    state.filter.process (
+        filterContext);
+
+    state.originalBand.setSize (
+        source.getNumChannels(),
+        source.getNumSamples(),
+        false, false, true);
+
+    state.originalBand.makeCopyOf (
+        state.band, true);
+
+    // 1) EQ DRIVE
+    // Positive = broad boost into compressor.
+    // Negative = broad cut, still with a little dynamics but almost no saturation.
+    const float eqDb =
+        positive > 0.0f
+            ? 11.0f * activity * positive
+            : -12.0f * activity * negative;
+
+    const float eqGain =
+        juce::Decibels::decibelsToGain (
+            eqDb);
+
+    state.band.applyGain (
+        eqGain);
+
+    // 2) LINKED COMPRESSION
+    // Positive side: stronger and increasingly obvious.
+    // Negative side: lighter, keeps the cut controlled.
     const float positiveComp =
-        activity
-        * (0.35f + 0.65f * positive);
+        positive
+        * juce::jlimit (
+            0.0f, 1.0f,
+            (activity - 0.15f) / 0.85f);
 
     const float negativeComp =
-        activity
-        * negative * 0.62f;
+        negative
+        * juce::jlimit (
+            0.0f, 1.0f,
+            (activity - 0.25f) / 0.75f)
+        * 0.45f;
 
     const float compAmount =
         juce::jlimit (
             0.0f, 1.0f,
-            positive > 0.0f
-                ? positiveComp
-                : negativeComp);
+            positiveComp + negativeComp);
 
-    float attackMs = 15.0f;
-    float releaseMs = 120.0f;
+    float attackMs = 12.0f;
+    float releaseMs = 110.0f;
 
     switch (bandIndex)
     {
-        case 0: attackMs = 30.0f; releaseMs = 210.0f; break;
-        case 1: attackMs = 15.0f; releaseMs = 135.0f; break;
-        case 2: attackMs = 7.0f;  releaseMs = 92.0f;  break;
-        default: attackMs = 3.5f; releaseMs = 68.0f;  break;
+        case 0: attackMs = 28.0f; releaseMs = 190.0f; break;
+        case 1: attackMs = 14.0f; releaseMs = 125.0f; break;
+        case 2: attackMs = 7.0f;  releaseMs = 85.0f;  break;
+        default: attackMs = 3.5f; releaseMs = 62.0f;  break;
     }
 
     const float attackCoeff =
@@ -703,27 +487,40 @@ void SculptChannelAudioProcessor::processMacroBand (
 
     const float thresholdDb =
         positive > 0.0f
-            ? (-5.0f - 23.0f * compAmount)
-            : (-6.0f - 14.0f * compAmount);
+            ? juce::jmap (
+                compAmount,
+                0.0f, 1.0f,
+                -4.0f, -24.0f)
+            : juce::jmap (
+                compAmount,
+                0.0f, 1.0f,
+                -3.0f, -13.0f);
 
     const float ratio =
         positive > 0.0f
-            ? (1.0f + 4.7f * compAmount)
-            : (1.0f + 2.3f * compAmount);
+            ? juce::jmap (
+                compAmount,
+                0.0f, 1.0f,
+                1.0f, 5.2f)
+            : juce::jmap (
+                compAmount,
+                0.0f, 1.0f,
+                1.0f, 2.2f);
 
-    float maxGainReductionDb = 0.0f;
+    float maxGrDb = 0.0f;
 
-    for (int i = 0; i < state.work.getNumSamples(); ++i)
+    for (int i = 0; i < state.band.getNumSamples(); ++i)
     {
         float detector = 0.0f;
 
-        for (int ch = 0; ch < state.work.getNumChannels(); ++ch)
+        for (int ch = 0; ch < state.band.getNumChannels(); ++ch)
         {
             detector =
                 juce::jmax (
                     detector,
                     std::abs (
-                        state.work.getSample (ch, i)));
+                        state.band.getSample (
+                            ch, i)));
         }
 
         const float envCoeff =
@@ -737,7 +534,8 @@ void SculptChannelAudioProcessor::processMacroBand (
 
         const float envDb =
             juce::Decibels::gainToDecibels (
-                state.compressorEnvelope + 1.0e-8f,
+                state.compressorEnvelope
+                + 1.0e-8f,
                 -120.0f);
 
         const float overDb =
@@ -747,15 +545,17 @@ void SculptChannelAudioProcessor::processMacroBand (
 
         const float grDb =
             overDb
-            * (1.0f - 1.0f / juce::jmax (1.0f, ratio));
+            * (1.0f
+               - 1.0f / juce::jmax (
+                    1.0f, ratio));
 
-        maxGainReductionDb =
+        maxGrDb =
             juce::jmax (
-                maxGainReductionDb,
-                grDb);
+                maxGrDb, grDb);
 
         const float targetGain =
-            juce::Decibels::decibelsToGain (-grDb);
+            juce::Decibels::decibelsToGain (
+                -grDb);
 
         const float gainCoeff =
             targetGain < state.compressorGain
@@ -764,20 +564,21 @@ void SculptChannelAudioProcessor::processMacroBand (
 
         state.compressorGain =
             gainCoeff * state.compressorGain
-            + (1.0f - gainCoeff) * targetGain;
+            + (1.0f - gainCoeff)
+              * targetGain;
 
-        // modest density makeup only on the positive side
+        // Slight make-up to preserve the feeling of pushing an analogue stage.
         const float makeup =
             1.0f
             + positive
               * compAmount
-              * 0.18f;
+              * 0.14f;
 
-        for (int ch = 0; ch < state.work.getNumChannels(); ++ch)
+        for (int ch = 0; ch < state.band.getNumChannels(); ++ch)
         {
-            state.work.setSample (
+            state.band.setSample (
                 ch, i,
-                state.work.getSample (ch, i)
+                state.band.getSample (ch, i)
                 * state.compressorGain
                 * makeup);
         }
@@ -786,102 +587,390 @@ void SculptChannelAudioProcessor::processMacroBand (
     compMeters[static_cast<size_t> (bandIndex)].store (
         juce::jlimit (
             0.0f, 1.0f,
-            maxGainReductionDb / 12.0f));
+            maxGrDb / 12.0f));
 
-    // Saturation enters later than compression and tops out lower than v0.3.
+    // 3) SATURATION
+    // Starts only after the compressor is already working.
     const float satEntrance =
         juce::jlimit (
             0.0f, 1.0f,
-            (magnitude - 0.32f) / 0.68f);
-
-    const float satCurve =
-        std::pow (satEntrance, 1.20f);
+            (positive - 0.52f) / 0.48f);
 
     const float positiveSat =
-        satCurve * positive;
+        std::pow (
+            satEntrance,
+            1.05f);
 
     const float negativeSat =
-        satCurve * negative * 0.12f;
+        negative
+        * juce::jlimit (
+            0.0f, 1.0f,
+            (activity - 0.72f) / 0.28f)
+        * 0.08f;
 
-    float saturationActivity = 0.0f;
+    float nonlinearDifference = 0.0f;
 
-    for (int ch = 0; ch < state.work.getNumChannels(); ++ch)
+    for (int ch = 0; ch < state.band.getNumChannels(); ++ch)
     {
         auto* data =
-            state.work.getWritePointer (ch);
+            state.band.getWritePointer (ch);
 
-        for (int i = 0; i < state.work.getNumSamples(); ++i)
+        for (int i = 0; i < state.band.getNumSamples(); ++i)
         {
-            const float before = data[i];
+            const float before =
+                data[i];
 
             const float after =
-                applyBandSaturation (
+                saturateBandSample (
                     before,
                     positiveSat,
                     negativeSat,
                     bandIndex);
 
-            saturationActivity +=
-                std::abs (after - before);
+            nonlinearDifference +=
+                std::abs (
+                    after - before);
 
             data[i] = after;
         }
     }
 
-    const float normaliser =
+    const float norm =
         static_cast<float> (
             juce::jmax (
                 1,
-                state.work.getNumSamples()
-                * state.work.getNumChannels()));
+                state.band.getNumSamples()
+                * state.band.getNumChannels()));
 
     satMeters[static_cast<size_t> (bandIndex)].store (
         juce::jlimit (
             0.0f, 1.0f,
-            saturationActivity
-            / normaliser
-            * 8.0f));
+            nonlinearDifference
+            / norm
+            * 7.0f));
 
-    const float forwardCurve =
-        std::pow (activity, 0.95f);
-
-    const float recessCurve =
-        std::pow (activity, 0.72f);
-
-    float maxForward = 0.45f;
-    float maxRecess  = 0.62f;
-
-    switch (bandIndex)
-    {
-        case 0: maxForward = 0.58f; maxRecess = 0.78f; break;
-        case 1: maxForward = 0.49f; maxRecess = 0.70f; break;
-        case 2: maxForward = 0.43f; maxRecess = 0.64f; break;
-        default: maxForward = 0.38f; maxRecess = 0.56f; break;
-    }
-
-    const float forwardMix =
-        maxForward
-        * forwardCurve
-        * positive;
-
-    const float recessMix =
-        maxRecess
-        * recessCurve
-        * negative;
-
+    // Replace only the broad band with the EQ -> COMP -> SAT version.
+    // This makes the macro behave much more like a real driven channel strip.
     for (int ch = 0; ch < source.getNumChannels(); ++ch)
     {
         auto* dst =
             source.getWritePointer (ch);
 
-        const auto* wet =
-            state.work.getReadPointer (ch);
+        const auto* original =
+            state.originalBand.getReadPointer (ch);
+
+        const auto* processed =
+            state.band.getReadPointer (ch);
 
         for (int i = 0; i < source.getNumSamples(); ++i)
         {
-            dst[i] += wet[i] * forwardMix;
-            dst[i] -= wet[i] * recessMix;
+            dst[i] +=
+                processed[i]
+                - original[i];
         }
+    }
+}
+
+void SculptChannelAudioProcessor::processSootheGuardrail (
+    juce::AudioBuffer<float>& source,
+    const std::array<float, numMacroBands>& macros,
+    bool variationEnabled)
+{
+    std::array<float, numResBands> bandDb {};
+    std::array<float, numMacroBands> macroPeak {};
+    macroPeak.fill (0.0f);
+
+    // Analyse all 32 narrow regions from the already coloured signal.
+    for (int b = 0; b < numResBands; ++b)
+    {
+        auto& state =
+            resBands[static_cast<size_t> (b)];
+
+        state.work.setSize (
+            source.getNumChannels(),
+            source.getNumSamples(),
+            false, false, true);
+
+        state.work.makeCopyOf (
+            source, true);
+
+        juce::dsp::AudioBlock<float> block (
+            state.work);
+
+        juce::dsp::ProcessContextReplacing<float> context (
+            block);
+
+        state.filter.process (
+            context);
+
+        const float rms =
+            getBlockRMS (
+                state.work);
+
+        bandDb[static_cast<size_t> (b)] =
+            juce::Decibels::gainToDecibels (
+                rms + 1.0e-8f,
+                -120.0f);
+
+        const float blockSeconds =
+            static_cast<float> (
+                source.getNumSamples()
+                / internalSampleRate);
+
+        const float timeConstant =
+            juce::jmap (
+                resFrequencies[static_cast<size_t> (b)],
+                20.0f,
+                20000.0f,
+                0.36f,
+                0.13f);
+
+        const float coeff =
+            std::exp (
+                -blockSeconds
+                / juce::jmax (
+                    0.05f,
+                    timeConstant));
+
+        if (state.slowEnergy <= 1.0e-7f)
+            state.slowEnergy = rms;
+        else
+            state.slowEnergy =
+                coeff * state.slowEnergy
+                + (1.0f - coeff)
+                  * rms;
+    }
+
+    for (int b = 0; b < numResBands; ++b)
+    {
+        auto& state =
+            resBands[static_cast<size_t> (b)];
+
+        float macroMagnitude = 0.0f;
+
+        for (int m = 0; m < numMacroBands; ++m)
+        {
+            const float knob =
+                std::abs (
+                    macros[static_cast<size_t> (m)]
+                    / 100.0f);
+
+            macroMagnitude +=
+                knob
+                * resMacroWeights[static_cast<size_t> (b)][static_cast<size_t> (m)];
+        }
+
+        const float activity =
+            macroCurve (
+                juce::jlimit (
+                    0.0f, 1.0f,
+                    macroMagnitude));
+
+        if (activity < 0.08f)
+        {
+            state.reduction *= 0.92f;
+            continue;
+        }
+
+        float neighbourDb = 0.0f;
+        float weightSum = 0.0f;
+
+        for (int offset = -2; offset <= 2; ++offset)
+        {
+            if (offset == 0)
+                continue;
+
+            const int n = b + offset;
+
+            if (n < 0 || n >= numResBands)
+                continue;
+
+            const float w =
+                std::abs (offset) == 1
+                    ? 1.0f
+                    : 0.55f;
+
+            neighbourDb +=
+                bandDb[static_cast<size_t> (n)]
+                * w;
+
+            weightSum += w;
+        }
+
+        if (weightSum > 0.0f)
+            neighbourDb /= weightSum;
+        else
+            neighbourDb =
+                bandDb[static_cast<size_t> (b)];
+
+        const float slowDb =
+            juce::Decibels::gainToDecibels (
+                state.slowEnergy
+                + 1.0e-8f,
+                -120.0f);
+
+        float variationBoost =
+            variationEnabled
+                ? variationSensitivity[static_cast<size_t> (b)]
+                : 1.0f;
+
+        // High threshold: only true protrusions should trigger the guardrail.
+        float spectralThresholdDb =
+            juce::jmap (
+                activity,
+                6.2f,
+                4.3f);
+
+        float temporalThresholdDb =
+            juce::jmap (
+                activity,
+                5.2f,
+                3.6f);
+
+        if (variationEnabled)
+        {
+            const float focus =
+                variationBoost - 1.0f;
+
+            spectralThresholdDb -=
+                1.5f * focus;
+
+            temporalThresholdDb -=
+                1.0f * focus;
+        }
+
+        const float spectralExcessDb =
+            juce::jmax (
+                0.0f,
+                bandDb[static_cast<size_t> (b)]
+                - neighbourDb
+                - spectralThresholdDb);
+
+        const float temporalExcessDb =
+            juce::jmax (
+                0.0f,
+                bandDb[static_cast<size_t> (b)]
+                - slowDb
+                - temporalThresholdDb);
+
+        float desiredDb =
+            (spectralExcessDb * 0.42f
+             + temporalExcessDb * 0.18f)
+            * activity;
+
+        desiredDb *= variationBoost;
+
+        // Normal mode max ≈ 0.5–3 dB.
+        // Variation can focus up to about 4.5 dB on selected areas.
+        float maxDb =
+            0.45f
+            + 2.35f * activity;
+
+        if (variationEnabled)
+        {
+            maxDb +=
+                2.0f
+                * (variationBoost - 1.0f);
+        }
+
+        maxDb =
+            juce::jlimit (
+                0.5f, 4.6f,
+                maxDb);
+
+        desiredDb =
+            juce::jlimit (
+                0.0f, maxDb,
+                desiredDb);
+
+        const float targetReduction =
+            1.0f
+            - juce::Decibels::decibelsToGain (
+                -desiredDb);
+
+        const float blockSeconds =
+            static_cast<float> (
+                source.getNumSamples()
+                / internalSampleRate);
+
+        const float attackSeconds =
+            juce::jmap (
+                resFrequencies[static_cast<size_t> (b)],
+                20.0f, 20000.0f,
+                0.035f, 0.006f);
+
+        const float releaseSeconds =
+            juce::jmap (
+                resFrequencies[static_cast<size_t> (b)],
+                20.0f, 20000.0f,
+                0.280f, 0.095f);
+
+        const float coeff =
+            std::exp (
+                -blockSeconds
+                / (targetReduction > state.reduction
+                    ? attackSeconds
+                    : releaseSeconds));
+
+        const float previous =
+            state.reduction;
+
+        state.reduction =
+            coeff * state.reduction
+            + (1.0f - coeff)
+              * targetReduction;
+
+        const float meter =
+            juce::jlimit (
+                0.0f, 1.0f,
+                desiredDb / 4.6f);
+
+        for (int m = 0; m < numMacroBands; ++m)
+        {
+            macroPeak[static_cast<size_t> (m)] =
+                juce::jmax (
+                    macroPeak[static_cast<size_t> (m)],
+                    meter
+                    * resMacroWeights[static_cast<size_t> (b)][static_cast<size_t> (m)]);
+        }
+
+        for (int ch = 0; ch < source.getNumChannels(); ++ch)
+        {
+            auto* dst =
+                source.getWritePointer (ch);
+
+            const auto* narrow =
+                state.work.getReadPointer (ch);
+
+            const int samples =
+                source.getNumSamples();
+
+            for (int i = 0; i < samples; ++i)
+            {
+                const float t =
+                    samples > 1
+                        ? static_cast<float> (i)
+                          / static_cast<float> (samples - 1)
+                        : 1.0f;
+
+                const float reduction =
+                    previous
+                    + (state.reduction - previous)
+                      * t;
+
+                dst[i] -=
+                    narrow[i]
+                    * reduction;
+            }
+        }
+    }
+
+    for (int m = 0; m < numMacroBands; ++m)
+    {
+        resMeters[static_cast<size_t> (m)].store (
+            juce::jlimit (
+                0.0f, 1.0f,
+                macroPeak[static_cast<size_t> (m)] * 1.25f));
     }
 }
 
@@ -895,14 +984,6 @@ void SculptChannelAudioProcessor::processInternal (
         apvts.getRawParameterValue ("presence")->load()
     };
 
-    const bool variationEnabled =
-        apvts.getRawParameterValue ("variation")->load() > 0.5f;
-
-    processResEngine (
-        buffer,
-        macros,
-        variationEnabled);
-
     for (int band = 0; band < numMacroBands; ++band)
     {
         processMacroBand (
@@ -910,6 +991,16 @@ void SculptChannelAudioProcessor::processInternal (
             band,
             macros[static_cast<size_t> (band)]);
     }
+
+    const bool variationEnabled =
+        apvts.getRawParameterValue ("variation")->load() > 0.5f;
+
+    // Soothe happens AFTER the colour chain:
+    // it only catches the resonances created/exposed by EQ -> COMP -> SAT.
+    processSootheGuardrail (
+        buffer,
+        macros,
+        variationEnabled);
 }
 
 void SculptChannelAudioProcessor::applyLevelMatchAndOutput (
@@ -920,24 +1011,24 @@ void SculptChannelAudioProcessor::applyLevelMatchAndOutput (
     const float processedRms =
         getBlockRMS (buffer);
 
-    float targetLevelMatchDb = 0.0f;
+    float targetDb = 0.0f;
 
     if (levelMatchEnabled
         && inputRms > 1.0e-5f
         && processedRms > 1.0e-5f)
     {
-        const float inDb =
+        const float inputDb =
             juce::Decibels::gainToDecibels (
                 inputRms, -120.0f);
 
-        const float outDb =
+        const float outputDb =
             juce::Decibels::gainToDecibels (
                 processedRms, -120.0f);
 
-        targetLevelMatchDb =
+        targetDb =
             juce::jlimit (
                 -6.0f, 6.0f,
-                inDb - outDb);
+                inputDb - outputDb);
     }
 
     const float blockSeconds =
@@ -945,18 +1036,19 @@ void SculptChannelAudioProcessor::applyLevelMatchAndOutput (
             buffer.getNumSamples()
             / baseSampleRate);
 
-    const float timeConstant =
-        levelMatchEnabled ? 0.55f : 0.22f;
-
     const float coeff =
         std::exp (
-            -blockSeconds / timeConstant);
+            -blockSeconds
+            / (levelMatchEnabled
+                ? 0.60f
+                : 0.22f));
 
     levelMatchDbState =
         coeff * levelMatchDbState
-        + (1.0f - coeff) * targetLevelMatchDb;
+        + (1.0f - coeff)
+          * targetDb;
 
-    const float levelMatchGain =
+    const float matchGain =
         juce::Decibels::decibelsToGain (
             levelMatchDbState);
 
@@ -964,19 +1056,21 @@ void SculptChannelAudioProcessor::applyLevelMatchAndOutput (
         apvts.getRawParameterValue ("output")->load();
 
     outputGain.setTargetValue (
-        juce::Decibels::decibelsToGain (outputDb));
+        juce::Decibels::decibelsToGain (
+            outputDb));
 
     for (int i = 0; i < buffer.getNumSamples(); ++i)
     {
         const float gain =
-            levelMatchGain
+            matchGain
             * outputGain.getNextValue();
 
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
         {
             buffer.setSample (
                 ch, i,
-                buffer.getSample (ch, i) * gain);
+                buffer.getSample (ch, i)
+                * gain);
         }
     }
 }
@@ -992,10 +1086,12 @@ void SculptChannelAudioProcessor::processBlock (
         buffer.getNumSamples(),
         false, false, true);
 
-    dryBaseRate.makeCopyOf (buffer, true);
+    dryBaseRate.makeCopyOf (
+        buffer, true);
 
     const float inputRms =
-        getBlockRMS (dryBaseRate);
+        getBlockRMS (
+            dryBaseRate);
 
     float inPeak = 0.0f;
 
@@ -1005,7 +1101,8 @@ void SculptChannelAudioProcessor::processBlock (
             juce::jmax (
                 inPeak,
                 buffer.getMagnitude (
-                    ch, 0, buffer.getNumSamples()));
+                    ch, 0,
+                    buffer.getNumSamples()));
     }
 
     inputMeter.store (
@@ -1015,28 +1112,43 @@ void SculptChannelAudioProcessor::processBlock (
 
     if (oversampler != nullptr)
     {
-        juce::dsp::AudioBlock<float> baseBlock (buffer);
+        juce::dsp::AudioBlock<float> baseBlock (
+            buffer);
 
         auto upBlock =
-            oversampler->processSamplesUp (baseBlock);
+            oversampler->processSamplesUp (
+                baseBlock);
 
-        std::array<float*, 2> pointers { nullptr, nullptr };
+        std::array<float*, 2> pointers {
+            nullptr, nullptr
+        };
 
-        for (size_t ch = 0; ch < upBlock.getNumChannels() && ch < pointers.size(); ++ch)
-            pointers[ch] = upBlock.getChannelPointer (ch);
+        for (size_t ch = 0;
+             ch < upBlock.getNumChannels()
+             && ch < pointers.size();
+             ++ch)
+        {
+            pointers[ch] =
+                upBlock.getChannelPointer (ch);
+        }
 
         juce::AudioBuffer<float> internalBuffer (
             pointers.data(),
-            static_cast<int> (upBlock.getNumChannels()),
-            static_cast<int> (upBlock.getNumSamples()));
+            static_cast<int> (
+                upBlock.getNumChannels()),
+            static_cast<int> (
+                upBlock.getNumSamples()));
 
-        processInternal (internalBuffer);
+        processInternal (
+            internalBuffer);
 
-        oversampler->processSamplesDown (baseBlock);
+        oversampler->processSamplesDown (
+            baseBlock);
     }
     else
     {
-        processInternal (buffer);
+        processInternal (
+            buffer);
     }
 
     const bool levelMatchEnabled =
@@ -1055,7 +1167,8 @@ void SculptChannelAudioProcessor::processBlock (
             juce::jmax (
                 outPeak,
                 buffer.getMagnitude (
-                    ch, 0, buffer.getNumSamples()));
+                    ch, 0,
+                    buffer.getNumSamples()));
     }
 
     outputMeter.store (
@@ -1069,7 +1182,8 @@ float SculptChannelAudioProcessor::getResMeter (int band) const noexcept
     return resMeters[
         static_cast<size_t> (
             juce::jlimit (
-                0, numMacroBands - 1, band))].load();
+                0, numMacroBands - 1,
+                band))].load();
 }
 
 float SculptChannelAudioProcessor::getCompMeter (int band) const noexcept
@@ -1077,7 +1191,8 @@ float SculptChannelAudioProcessor::getCompMeter (int band) const noexcept
     return compMeters[
         static_cast<size_t> (
             juce::jlimit (
-                0, numMacroBands - 1, band))].load();
+                0, numMacroBands - 1,
+                band))].load();
 }
 
 float SculptChannelAudioProcessor::getSatMeter (int band) const noexcept
@@ -1085,15 +1200,8 @@ float SculptChannelAudioProcessor::getSatMeter (int band) const noexcept
     return satMeters[
         static_cast<size_t> (
             juce::jlimit (
-                0, numMacroBands - 1, band))].load();
-}
-
-float SculptChannelAudioProcessor::getResBandMeter (int band) const noexcept
-{
-    return resBandMeters[
-        static_cast<size_t> (
-            juce::jlimit (
-                0, numResBands - 1, band))].load();
+                0, numMacroBands - 1,
+                band))].load();
 }
 
 void SculptChannelAudioProcessor::getStateInformation (
@@ -1103,7 +1211,8 @@ void SculptChannelAudioProcessor::getStateInformation (
         apvts.copyState().createXml())
     {
         copyXmlToBinary (
-            *xml, destData);
+            *xml,
+            destData);
     }
 }
 
@@ -1113,13 +1222,15 @@ void SculptChannelAudioProcessor::setStateInformation (
 {
     if (auto xml =
         getXmlFromBinary (
-            data, sizeInBytes))
+            data,
+            sizeInBytes))
     {
         if (xml->hasTagName (
                 apvts.state.getType()))
         {
             apvts.replaceState (
-                juce::ValueTree::fromXml (*xml));
+                juce::ValueTree::fromXml (
+                    *xml));
         }
     }
 }

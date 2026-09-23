@@ -41,11 +41,8 @@ public:
     float getResMeter (int band) const noexcept;
     float getCompMeter (int band) const noexcept;
     float getSatMeter (int band) const noexcept;
-    float getResBandMeter (int band) const noexcept;
     float getInputMeter() const noexcept  { return inputMeter.load(); }
     float getOutputMeter() const noexcept { return outputMeter.load(); }
-
-    static constexpr int getNumResBands() noexcept { return 32; }
 
 private:
     static constexpr int numMacroBands = 4;
@@ -54,7 +51,8 @@ private:
     struct MacroBandState
     {
         juce::dsp::StateVariableTPTFilter<float> filter;
-        juce::AudioBuffer<float> work;
+        juce::AudioBuffer<float> band;
+        juce::AudioBuffer<float> originalBand;
 
         float compressorEnvelope = 0.0f;
         float compressorGain = 1.0f;
@@ -66,7 +64,7 @@ private:
         juce::AudioBuffer<float> work;
 
         float slowEnergy = 0.0f;
-        float currentReduction = 0.0f;
+        float reduction = 0.0f;
     };
 
     juce::AudioProcessorValueTreeState apvts;
@@ -91,7 +89,6 @@ private:
     std::array<std::atomic<float>, numMacroBands> resMeters;
     std::array<std::atomic<float>, numMacroBands> compMeters;
     std::array<std::atomic<float>, numMacroBands> satMeters;
-    std::array<std::atomic<float>, numResBands> resBandMeters;
 
     std::atomic<float> inputMeter  { 0.0f };
     std::atomic<float> outputMeter { 0.0f };
@@ -109,21 +106,22 @@ private:
     void computeResWeighting();
 
     void processInternal (juce::AudioBuffer<float>&);
-    void processResEngine (juce::AudioBuffer<float>&,
-                           const std::array<float, numMacroBands>& macros,
-                           bool variationEnabled);
 
     void processMacroBand (juce::AudioBuffer<float>&,
                            int bandIndex,
                            float macroValue);
 
-    float applyBandSaturation (float sample,
-                               float positiveAmount,
-                               float negativeAmount,
-                               int bandIndex) const noexcept;
+    void processSootheGuardrail (juce::AudioBuffer<float>&,
+                                 const std::array<float, numMacroBands>& macros,
+                                 bool variationEnabled);
+
+    float saturateBandSample (float sample,
+                              float positiveAmount,
+                              float negativeAmount,
+                              int bandIndex) const noexcept;
 
     float getBlockRMS (const juce::AudioBuffer<float>&) const noexcept;
-    float macroActivityCurve (float magnitude) const noexcept;
+    float macroCurve (float magnitude) const noexcept;
 
     void applyLevelMatchAndOutput (juce::AudioBuffer<float>&,
                                    float inputRms,

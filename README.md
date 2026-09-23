@@ -1,50 +1,53 @@
-# Sculpt Channel v0.4
+# Sculpt Channel v0.5
 
-This is a major DSP/UI revision.
+## Core philosophy
 
-## RES engine
-The resonance stage is now a 32-band dynamic system instead of four broad detectors.
+v0.5 returns the plugin to the intended musical behaviour:
 
-Band centres:
-20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250,
-315, 400, 500, 630, 800, 1k, 1.25k, 1.6k, 2k, 2.5k, 3k,
-3.5k, 4k, 5k, 6.3k, 8k, 10k, 12.5k, 16k, 20k.
+**EQ -> COMP -> SAT**
 
-Each band compares:
-- its current energy against neighbouring bands
-- its current energy against its own slower temporal baseline
+The four macro controls now behave like broad EQ bands being pushed into a compressor
+and then into an analogue-style nonlinear stage.
 
-This lets RES react to both persistent spectral protrusions and short resonant events.
+### Positive values
+- first: broad EQ boost becomes audible
+- then: compression becomes increasingly obvious
+- finally: the band starts to distort/saturate
 
-All 32 bands are controlled continuously by the four main macro knobs with overlapping
-frequency weighting.
+The saturation begins after the compressor is already working.
+
+### Negative values
+- broad EQ cut is obvious
+- a lighter amount of compression remains active
+- saturation is almost absent
+
+## 32-band Soothe guardrail
+
+The 32-band engine still exists, but it is no longer the protagonist.
+
+It runs after EQ -> COMP -> SAT and only reacts when a narrow area becomes clearly
+more resonant than its neighbours or than its own slow temporal baseline.
+
+Normal maximum reduction is intentionally small, roughly in the 0.5–3 dB region.
 
 ### VARIATION
-Variation does not add another set of filters.
-It increases detector sensitivity around:
-200 Hz, 500 Hz, 1 kHz, 3 kHz, 5 kHz and 8 kHz,
-including a smaller influence on adjacent bands.
+Variation increases sensitivity around:
+- 200 Hz
+- 500 Hz
+- 1 kHz
+- 3 kHz
+- 5 kHz
+- 8 kHz
 
-## Macro behaviour
-- much more progressive response from low knob values
-- stronger positive-side compression
-- negative side is substantially more reactive
-- saturation starts later and is less dominant than v0.3
-- processing is internally 4x oversampled
-- compressor detection is stereo linked
-
-## LEVEL MATCH
-Optional slow level compensation for more meaningful A/B comparison.
-It is intentionally slow so it does not behave like an audio compressor.
+Those focused areas can reach stronger correction, up to roughly 4–5 dB when necessary.
 
 ## GUI
-Vintage hardware-style front panel:
-- dark enamel / brushed faceplate
-- wood side cheeks
-- bakelite-style knobs
-- brass collars and screws
-- hardware toggle switches
-- segmented RES / COMP / SAT meters
-- 32-band RES activity matrix
+- removed the 32-band activity display
+- kept only useful RES / COMP / SAT meters per macro
+- vintage dark enamel / bakelite / brass / wood visual language
+- Variation and Level Match remain hardware-style toggle switches
 
-The colour family remains amber / cyan / cream / charcoal.
+## Processing
+- internally 4x oversampled
+- stereo-linked compressor detection
+- optional slow Level Match

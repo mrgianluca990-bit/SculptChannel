@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(SculptChannel VERSION 0.4.0)
+project(SculptChannel VERSION 0.5.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,7 +31,6 @@ juce_add_plugin(SculptChannel
     BUNDLE_ID "audio.sculpt.channel"
     PLUGIN_MANUFACTURER_CODE ScPt
     PLUGIN_CODE ScCh
-
     FORMATS ${SCULPT_FORMATS}
     PRODUCT_NAME "Sculpt Channel"
 
@@ -62,7 +61,6 @@ target_link_libraries(SculptChannel
     PRIVATE
         juce::juce_audio_utils
         juce::juce_dsp
-
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags

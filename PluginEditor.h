@@ -79,7 +79,7 @@ private:
                     const juce::String& parameterID);
 
     void drawFaceplateTexture (juce::Graphics&, juce::Rectangle<float>);
-    void drawWoodCheek (juce::Graphics&, juce::Rectangle<float>, bool left);
+    void drawWoodCheek (juce::Graphics&, juce::Rectangle<float>);
     void drawModuleFrame (juce::Graphics&, juce::Rectangle<float>);
     void drawKnobScale (juce::Graphics&, juce::Rectangle<float>);
 
@@ -92,9 +92,6 @@ private:
                        float value,
                        juce::Colour colour,
                        const juce::String& label);
-
-    void drawResMatrix (juce::Graphics&,
-                        juce::Rectangle<float>);
 
     void timerCallback() override;
 
